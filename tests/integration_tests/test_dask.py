@@ -58,7 +58,7 @@ def objective_slow(trial: Trial) -> float:
 
 
 @pytest.fixture
-def client() -> "Client":  # type: ignore[no-untyped-call]
+def client() -> "Client":  # type: ignore[misc]
     with clean():
         with Client(dashboard_address=":0") as client:  # type: ignore[no-untyped-call]
             yield client
