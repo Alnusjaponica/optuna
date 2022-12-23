@@ -39,8 +39,14 @@ def _serialize_frozentrial(trial: FrozenTrial) -> dict:
     attrs = [a for a in data.keys() if a.startswith("_")]
     for attr in attrs:
         data[attr[1:]] = data.pop(attr)
-    data["system_attrs"] = dumps(data["system_attrs"]) if data["system_attrs"] else {}  # type: ignore[no-untyped-call]
-    data["user_attrs"] = dumps(data["user_attrs"]) if data["user_attrs"] else {}  # type: ignore[no-untyped-call]
+    data["system_attrs"] = (
+        dumps(data["system_attrs"])  # type: ignore[no-untyped-call]
+        if data["system_attrs"]
+        else {}
+    )
+    data["user_attrs"] = (
+        dumps(data["user_attrs"]) if data["user_attrs"] else {}  # type: ignore[no-untyped-call]
+    )
     data["distributions"] = {k: distribution_to_json(v) for k, v in data["distributions"].items()}
     if data["datetime_start"] is not None:
         data["datetime_start"] = data["datetime_start"].isoformat(timespec="microseconds")
@@ -57,8 +63,14 @@ def _deserialize_frozentrial(data: dict) -> FrozenTrial:
         data["datetime_start"] = datetime.fromisoformat(data["datetime_start"])
     if data["datetime_complete"] is not None:
         data["datetime_complete"] = datetime.fromisoformat(data["datetime_complete"])
-    data["system_attrs"] = loads(data["system_attrs"]) if data["system_attrs"] else {}  # type: ignore[no-untyped-call]
-    data["user_attrs"] = loads(data["user_attrs"]) if data["user_attrs"] else {}  # type: ignore[no-untyped-call]
+    data["system_attrs"] = (
+        loads(data["system_attrs"])  # type: ignore[no-untyped-call]
+        if data["system_attrs"]
+        else {}
+    )
+    data["user_attrs"] = (
+        loads(data["user_attrs"]) if data["user_attrs"] else {}  # type: ignore[no-untyped-call]
+    )
     return FrozenTrial(**data)
 
 
@@ -666,13 +678,15 @@ class DaskStorage(BaseStorage):
     # Basic trial access
 
     async def _get_trial(self, trial_id: int) -> FrozenTrial:
-        serialized_trial = await self.client.scheduler.optuna_get_trial(  # type: ignore[union-attr]
+        serialized_trial = await self.client.scheduler.optuna_get_trial(
             trial_id=trial_id, storage_name=self.name
-        )
+        )  # type: ignore[union-attr]
         return _deserialize_frozentrial(serialized_trial)
 
     def get_trial(self, trial_id: int) -> FrozenTrial:
-        return self.client.sync(self._get_trial, trial_id=trial_id)  # type: ignore[no-untyped-call]
+        return self.client.sync(  # type: ignore[no-untyped-call]
+            self._get_trial, trial_id=trial_id
+        )
 
     async def _get_all_trials(
         self, study_id: int, deepcopy: bool = True, states: Optional[Iterable[TrialState]] = None
@@ -680,12 +694,12 @@ class DaskStorage(BaseStorage):
         serialized_states = None
         if states is not None:
             serialized_states = tuple(s.name for s in states)
-        serialized_trials = await self.client.scheduler.optuna_get_all_trials(  # type: ignore[union-attr]
+        serialized_trials = await self.client.scheduler.optuna_get_all_trials(
             storage_name=self.name,
             study_id=study_id,
             deepcopy=deepcopy,
             states=serialized_states,
-        )
+        )  # type: ignore[union-attr]
         return [_deserialize_frozentrial(t) for t in serialized_trials]
 
     def get_all_trials(
