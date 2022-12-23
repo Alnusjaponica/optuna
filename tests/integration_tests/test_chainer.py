@@ -48,20 +48,24 @@ def test_chainer_pruning_extension_trigger() -> None:
         extension._pruner_trigger, triggers.IntervalTrigger  # type: ignore[attr-defined]
     )
     extension = ChainerPruningExtension(
-        trial, "main/loss", triggers.IntervalTrigger(1, "epoch")  # type: ignore
+        trial, "main/loss", triggers.IntervalTrigger(1, "epoch")  # type: ignore[attr-defined]
     )
     assert isinstance(
         extension._pruner_trigger, triggers.IntervalTrigger  # type: ignore[attr-defined]
     )
     extension = ChainerPruningExtension(
-        trial, "main/loss", triggers.ManualScheduleTrigger(1, "epoch")  # type: ignore
+        trial,
+        "main/loss",
+        triggers.ManualScheduleTrigger(1, "epoch"),  # type: ignore[attr-defined]
     )
     assert isinstance(
         extension._pruner_trigger, triggers.ManualScheduleTrigger  # type: ignore[attr-defined]
     )
 
     with pytest.raises(TypeError):
-        ChainerPruningExtension(trial, "main/loss", triggers.TimeTrigger(1.0))  # type: ignore
+        ChainerPruningExtension(
+            trial, "main/loss", triggers.TimeTrigger(1.0)  # type: ignore[attr-defined]
+        )
 
 
 def test_chainer_pruning_extension() -> None:
@@ -136,6 +140,6 @@ def test_get_float_value() -> None:
 
     assert 1.0 == ChainerPruningExtension._get_float_value(1.0)
     assert 1.0 == ChainerPruningExtension._get_float_value(
-        chainer.Variable(np.array([1.0]))  # type: ignore
+        chainer.Variable(np.array([1.0]))  # type: ignore[attr-defined]
     )
     assert math.isnan(ChainerPruningExtension._get_float_value(float("nan")))
