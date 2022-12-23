@@ -300,7 +300,7 @@ def test_allennlp_pruning_callback() -> None:
             optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
 
             serialization_dir = os.path.join(tmp_dir, "trial_{}".format(trial.number))
-            trainer = allennlp.training.GradientDescentTrainer(
+            trainer = allennlp.training.GradientDescentTrainer(  # type: ignore[attr-defined]
                 model=model,
                 optimizer=optimizer,
                 data_loader=data_loader,
