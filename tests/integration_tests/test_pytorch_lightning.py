@@ -22,7 +22,7 @@ with try_import() as _imports:
     import torch.nn.functional as F
 
 if not _imports.is_successful():
-    LightningModule = object  # type: ignore # NOQA
+    LightningModule = object  # NOQA
 
 pytestmark = pytest.mark.integration
 
@@ -95,7 +95,7 @@ class ModelDDP(Model):
 
         super().__init__()
 
-    def validation_step(  # type: ignore
+    def validation_step(
         self, batch: List["torch.Tensor"], batch_nb: int
     ) -> Dict[str, "torch.Tensor"]:
 
