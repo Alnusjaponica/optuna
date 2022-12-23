@@ -678,9 +678,9 @@ class DaskStorage(BaseStorage):
     # Basic trial access
 
     async def _get_trial(self, trial_id: int) -> FrozenTrial:
-        serialized_trial = await self.client.scheduler.optuna_get_trial(
+        serialized_trial = await self.client.scheduler.optuna_get_trial(  # type: ignore[union-attr]
             trial_id=trial_id, storage_name=self.name
-        )  # type: ignore[union-attr]
+        )
         return _deserialize_frozentrial(serialized_trial)
 
     def get_trial(self, trial_id: int) -> FrozenTrial:
@@ -694,12 +694,12 @@ class DaskStorage(BaseStorage):
         serialized_states = None
         if states is not None:
             serialized_states = tuple(s.name for s in states)
-        serialized_trials = await self.client.scheduler.optuna_get_all_trials(
+        serialized_trials = await self.client.scheduler.optuna_get_all_trials(  # type: ignore[union-attr]
             storage_name=self.name,
             study_id=study_id,
             deepcopy=deepcopy,
             states=serialized_states,
-        )  # type: ignore[union-attr]
+        )
         return [_deserialize_frozentrial(t) for t in serialized_trials]
 
     def get_all_trials(
