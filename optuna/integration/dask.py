@@ -614,7 +614,7 @@ class DaskStorage(BaseStorage):
 
     def get_trial_id_from_study_id_trial_number(self, study_id: int, trial_number: int) -> int:
         return self.client.sync(  # type: ignore[no-untyped-call]
-            self.client.scheduler.optuna_get_trial_id_from_study_id_trial_number,  # type: ignore[union-attr]
+            self.client.scheduler.optuna_get_trial_id_from_study_id_trial_number,  # type: ignore[union-attr]  # NOQA: E501
             storage_name=self.name,
             study_id=study_id,
             trial_number=trial_number,
@@ -678,7 +678,7 @@ class DaskStorage(BaseStorage):
     # Basic trial access
 
     async def _get_trial(self, trial_id: int) -> FrozenTrial:
-        serialized_trial = await self.client.scheduler.optuna_get_trial(  # type: ignore[union-attr]
+        serialized_trial = await self.client.scheduler.optuna_get_trial(  # type: ignore[union-attr]  # NOQA: E501
             trial_id=trial_id, storage_name=self.name
         )
         return _deserialize_frozentrial(serialized_trial)
@@ -694,7 +694,7 @@ class DaskStorage(BaseStorage):
         serialized_states = None
         if states is not None:
             serialized_states = tuple(s.name for s in states)
-        serialized_trials = await self.client.scheduler.optuna_get_all_trials(  # type: ignore[union-attr]
+        serialized_trials = await self.client.scheduler.optuna_get_all_trials(  # type: ignore[union-attr]  # NOQA: E501
             storage_name=self.name,
             study_id=study_id,
             deepcopy=deepcopy,
