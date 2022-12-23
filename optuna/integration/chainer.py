@@ -11,7 +11,7 @@ with optuna._imports.try_import() as _imports:
     from chainer.training.triggers import ManualScheduleTrigger  # type: ignore[attr-defined]
 
 if not _imports.is_successful():
-    Extension = object  # NOQA
+    Extension = object  # type: ignore[assignment]  # NOQA
 
 
 class ChainerPruningExtension(Extension):
@@ -54,7 +54,7 @@ class ChainerPruningExtension(Extension):
 
         self._trial = trial
         self._observation_key = observation_key
-        self._pruner_trigger = chainer.training.get_trigger(pruner_trigger)
+        self._pruner_trigger = chainer.training.get_trigger(pruner_trigger)  # type: ignore[attr-defined]
         if not isinstance(self._pruner_trigger, (IntervalTrigger, ManualScheduleTrigger)):
             pruner_type = type(self._pruner_trigger)
             raise TypeError(
@@ -79,11 +79,11 @@ class ChainerPruningExtension(Extension):
                 "{} cannot be cast to float.".format(type(observation_value))
             ) from None
 
-    def _observation_exists(self, trainer: "chainer.training.Trainer") -> bool:
+    def _observation_exists(self, trainer: "chainer.training.Trainer") -> bool:  # type: ignore[name-defined]
 
         return self._pruner_trigger(trainer) and self._observation_key in trainer.observation
 
-    def __call__(self, trainer: "chainer.training.Trainer") -> None:
+    def __call__(self, trainer: "chainer.training.Trainer") -> None:  # type: ignore[name-defined]
 
         if not self._observation_exists(trainer):
             return
