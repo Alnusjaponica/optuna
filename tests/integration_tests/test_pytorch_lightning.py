@@ -22,7 +22,7 @@ with try_import() as _imports:
     import torch.nn.functional as F
 
 if not _imports.is_successful():
-    LightningModule = object  # NOQA
+    LightningModule = object  #type: ignore[assignment, misc]  # NOQA
 
 pytestmark = pytest.mark.integration
 
@@ -110,6 +110,7 @@ class ModelDDP(Model):
             accuracy = torch.tensor(0.6)
 
         self.log("accuracy", accuracy, sync_dist=True)
+        return {"validation_accuracy": accuracy}
 
 
 def test_pytorch_lightning_pruning_callback() -> None:
