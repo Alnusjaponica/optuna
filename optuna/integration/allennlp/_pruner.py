@@ -23,8 +23,8 @@ with try_import() as _imports:
     import allennlp.common.util
 
 if _imports.is_successful():
-    from allennlp.training import GradientDescentTrainer
-    from allennlp.training import TrainerCallback
+    from allennlp.training import GradientDescentTrainer  # type: ignore[attr-defined]
+    from allennlp.training import TrainerCallback  # type: ignore[attr-defined]
     import psutil
 
 else:
