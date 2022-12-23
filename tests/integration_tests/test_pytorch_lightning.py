@@ -22,7 +22,7 @@ with try_import() as _imports:
     import torch.nn.functional as F
 
 if not _imports.is_successful():
-    LightningModule = object  #type: ignore[assignment, misc]  # NOQA
+    LightningModule = object  # type: ignore[assignment, misc]  # NOQA
 
 pytestmark = pytest.mark.integration
 
