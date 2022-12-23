@@ -88,7 +88,9 @@ def test_study_optimize(client: "Client", storage_specifier: str) -> None:
         assert not study.trials
         futures = [
             client.submit(  # type: ignore[no-untyped-call]
-                study.optimize, objective, n_trials=1, pure=False) for _ in range(10)
+                study.optimize, objective, n_trials=1, pure=False
+            )
+            for _ in range(10)
         ]
         wait(futures)  # type: ignore[no-untyped-call]
         assert len(study.trials) == 10
