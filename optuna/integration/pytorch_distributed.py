@@ -298,7 +298,7 @@ class TorchDistributedTrial(optuna.trial.BaseTrial):
         return buffer.item()
 
     def _call_and_communicate_obj(self, func: Callable) -> Any:
-        rank = dist.get_rank(self._group)  # type: ignore
+        rank = dist.get_rank(self._group)  # type: ignore[no-untyped-call]
         result = func() if rank == 0 else None
         return self._broadcast(result)
 
