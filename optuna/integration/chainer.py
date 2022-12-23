@@ -11,7 +11,7 @@ with optuna._imports.try_import() as _imports:
     from chainer.training.triggers import ManualScheduleTrigger  # type: ignore[attr-defined]
 
 if not _imports.is_successful():
-    Extension = object  # type: ignore[assignment]  # NOQA
+    Extension = object  # type: ignore[assignment, misc]  # NOQA
 
 
 class ChainerPruningExtension(Extension):
@@ -66,12 +66,14 @@ class ChainerPruningExtension(Extension):
             )
 
     @staticmethod
-    def _get_float_value(observation_value: Union[float, "chainer.Variable"]) -> float:
+    def _get_float_value(
+        observation_value: Union[float, "chainer.Variable"]  # type: ignore[name-defined]
+    ) -> float:
 
         _imports.check()
 
         try:
-            if isinstance(observation_value, chainer.Variable):
+            if isinstance(observation_value, chainer.Variable):  # type: ignore[attr-defined]
                 return float(observation_value.data)
             else:
                 return float(observation_value)
