@@ -33,11 +33,10 @@ class Model(LightningModule):
         super().__init__()
         self._model = nn.Sequential(nn.Linear(4, 8))
 
-    def forward(self, data: "torch.Tensor") -> "torch.Tensor":  # type: ignore
-
+    def forward(self, data: "torch.Tensor") -> "torch.Tensor":
         return self._model(data)
 
-    def training_step(  # type: ignore
+    def training_step(
         self, batch: List["torch.Tensor"], batch_nb: int
     ) -> Dict[str, "torch.Tensor"]:
 
@@ -46,7 +45,7 @@ class Model(LightningModule):
         loss = F.nll_loss(output, target)
         return {"loss": loss}
 
-    def validation_step(  # type: ignore
+    def validation_step(
         self, batch: List["torch.Tensor"], batch_nb: int
     ) -> Dict[str, "torch.Tensor"]:
 
