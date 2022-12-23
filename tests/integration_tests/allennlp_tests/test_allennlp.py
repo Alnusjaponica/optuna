@@ -278,7 +278,7 @@ def test_allennlp_pruning_callback() -> None:
             reader = dataset_readers.TextClassificationJsonReader(  # type: ignore[attr-defined]
                 tokenizer=tokenizers.WhitespaceTokenizer(),  # type: ignore[attr-defined]
             )
-            data_loader = data_loaders.MultiProcessDataLoader(  # type: ignore[attr-defined]
+            data_loader = data_loaders.MultiProcessDataLoader(
                 reader=reader,
                 data_path="tests/integration_tests/allennlp_tests/pruning_test.jsonl",
                 batch_size=16,
