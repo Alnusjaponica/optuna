@@ -17,7 +17,7 @@ with try_import() as _imports:
     import chainer
     from chainer.dataset import DatasetMixin  # type: ignore[attr-defined]
     import chainer.links as L
-    from chainer.training import triggers  # type: ignore[attr-defined]
+    from chainer.training import triggers
 
 if not _imports.is_successful():
     DatasetMixin = object  # NOQA
@@ -120,7 +120,11 @@ def test_observation_exists() -> None:
     trainer = MockTrainer(observation={"OK": 0})
 
     # Trigger is deactivated. Return False whether trainer has observation or not.
-    with patch.object(triggers.IntervalTrigger, "__call__", Mock(return_value=False)) as mock:
+    with patch.object(
+        triggers.IntervalTrigger,  # type: ignore[attr-defined]
+        "__call__",
+        Mock(return_value=False),
+    ) as mock:
         extension = ChainerPruningExtension(trial, "NG", (1, "epoch"))
         assert extension._observation_exists(trainer) is False
         extension = ChainerPruningExtension(trial, "OK", (1, "epoch"))
@@ -128,7 +132,9 @@ def test_observation_exists() -> None:
         assert mock.call_count == 2
 
     # Trigger is activated. Return True if trainer has observation.
-    with patch.object(triggers.IntervalTrigger, "__call__", Mock(return_value=True)) as mock:
+    with patch.object(
+        triggers.IntervalTrigger, "__call__", Mock(return_value=True)  # type: ignore[attr-defined]
+    ) as mock:
         extension = ChainerPruningExtension(trial, "NG", (1, "epoch"))
         assert extension._observation_exists(trainer) is False
         extension = ChainerPruningExtension(trial, "OK", (1, "epoch"))
