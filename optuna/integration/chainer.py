@@ -54,7 +54,9 @@ class ChainerPruningExtension(Extension):
 
         self._trial = trial
         self._observation_key = observation_key
-        self._pruner_trigger = chainer.training.get_trigger(pruner_trigger)  # type: ignore[attr-defined]
+        self._pruner_trigger = chainer.training.get_trigger(  # type: ignore[attr-defined]
+            pruner_trigger
+        )
         if not isinstance(self._pruner_trigger, (IntervalTrigger, ManualScheduleTrigger)):
             pruner_type = type(self._pruner_trigger)
             raise TypeError(
@@ -79,7 +81,9 @@ class ChainerPruningExtension(Extension):
                 "{} cannot be cast to float.".format(type(observation_value))
             ) from None
 
-    def _observation_exists(self, trainer: "chainer.training.Trainer") -> bool:  # type: ignore[name-defined]
+    def _observation_exists(
+        self, trainer: "chainer.training.Trainer"  # type: ignore[name-defined]
+    ) -> bool:
 
         return self._pruner_trigger(trainer) and self._observation_key in trainer.observation
 
