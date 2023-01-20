@@ -105,9 +105,9 @@ class ModelDDP(Model):
         accuracy = pred.eq(target.view_as(pred)).double().mean()
 
         if self.local_rank == 0:
-            accuracy = torch.tensor(0.3)
-        elif self.local_rank == 1:
             accuracy = torch.tensor(0.6)
+        elif self.local_rank == 1:
+            accuracy = torch.tensor(0.3)
 
         self.log("accuracy", accuracy, sync_dist=True)
         return {"validation_accuracy": accuracy}
