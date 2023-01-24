@@ -99,19 +99,26 @@ class PyTorchLightningPruningCallback(Callback):
         if trainer.is_global_zero:
             self._trial.report(current_score.item(), step=epoch)
             should_stop = self._trial.should_prune()
+            print("validation_step called", should_stop, epoch, os.getpid())
+
         should_stop = trainer.strategy.broadcast(should_stop)
         if not should_stop:
             return
+        print("should_stop is True")
 
         if not self.is_ddp_backend:
             message = "Trial was pruned at epoch {}.".format(epoch)
             raise optuna.TrialPruned(message)
         else:
+            print("self.is_ddp_backend is True")
             # Stop every DDP process if global rank 0 process decides to stop.
             trainer.should_stop = True
             if trainer.is_global_zero:
+                print("trainer.is_global_zero is True")
                 self._trial.storage.set_trial_system_attr(self._trial._trial_id, _PRUNED_KEY, True)
                 self._trial.storage.set_trial_system_attr(self._trial._trial_id, _EPOCH_KEY, epoch)
+                self._message = "Trial was pruned at epoch {}.".format(epoch)
+                self._pruned = True
 
     def on_fit_end(self, trainer: Trainer, pl_module: LightningModule) -> None:
         if not self.is_ddp_backend:
@@ -121,17 +128,17 @@ class PyTorchLightningPruningCallback(Callback):
         # _trial.report is necessary to update the memory in main process, not to update the RDB.
         _trial_id = self._trial._trial_id
         _study = self._trial.study
-        _trial = _study._storage._backend.get_trial(_trial_id)  # type: ignore
+        # _trial = _study._storage._backend.get_trial(_trial_id)  # type: ignore
         _trial_system_attrs = _study._storage.get_trial_system_attrs(_trial_id)
         is_pruned = _trial_system_attrs.get(_PRUNED_KEY)
         epoch = _trial_system_attrs.get(_EPOCH_KEY)
-        intermediate_values = _trial.intermediate_values
-        for step, value in intermediate_values.items():
-            self._trial.report(value, step=step)
-
         if is_pruned:
             self._message = "Trial was pruned at epoch {}.".format(epoch)
             self._pruned = True
+        # intermediate_values = _trial.intermediate_values
+        # for step, value in intermediate_values.items():
+        #    print("on_fit_end called", step, os.getpid())
+        #    self._trial.report(value, step=step)
 
     def check_pruned(self) -> None:
         """Raise :class:`optuna.TrialPruned` manually if pruned."""
