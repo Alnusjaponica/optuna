@@ -493,9 +493,12 @@ class Trial(BaseTrial):
                 )
             )
             return
-
+        print("report is called")
         self.storage.set_trial_intermediate_value(self._trial_id, step, value)
         self._cached_frozen_trial.intermediate_values[step] = value
+        print(self._cached_frozen_trial.intermediate_values)
+        print(id(self.study))
+        print(self.study.trials)
 
     def should_prune(self) -> bool:
         """Suggest whether the trial should be pruned or not.

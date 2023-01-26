@@ -97,7 +97,7 @@ class PyTorchLightningPruningCallback(Callback):
         should_stop = False
         if trainer.is_global_zero:
             print(
-                "\non_validation_end called from grobal zero",
+                "\non_validation_end called from global zero",
                 os.getpid(),
                 id(self),
                 id(self._trial),
@@ -126,7 +126,6 @@ class PyTorchLightningPruningCallback(Callback):
         else:
             print(
                 "self.is_ddp_backend is True",
-                should_stop,
                 should_stop,
                 epoch,
                 os.getpid(),

@@ -182,9 +182,11 @@ def test_pytorch_lightning_pruning_callback_ddp_monitor(
     with StorageSupplier(storage_mode) as storage:
         study = optuna.create_study(storage=storage, pruner=DeterministicPruner(True))
         study.optimize(objective, n_trials=1)
-        print(id(study.trials[0]), os.getpid())
+        # print(id(study.trials[0]), os.getpid())
         assert study.trials[0].state == optuna.trial.TrialState.PRUNED
-        # assert list(study.trials[0].intermediate_values.keys()) == [0]
+        print(id(study))
+        print(study._storage._backend.get_trial(study.trials[0]._trial_id))
+        assert list(study.trials[0].intermediate_values.keys()) == [0]
         # np.testing.assert_almost_equal(study.trials[0].intermediate_values[0], 0.45)
         study = optuna.create_study(storage=storage, pruner=DeterministicPruner(False))
         study.optimize(objective, n_trials=1)
