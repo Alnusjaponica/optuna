@@ -62,7 +62,7 @@ class PyTorchLightningPruningCallback(Callback):
         if self.is_ddp_backend:
             if version.parse(pl.__version__) < version.parse("1.5.0"):  # type: ignore
                 raise ValueError("PyTorch Lightning>=1.5.0 is required in DDP.")
-            # if it were not for this block, fitting is launched even if unsupported storage 
+            # if it were not for this block, fitting is launched even if unsupported storage
             # is used. Note that the ValueError is transformed into ProcessRaisedException inside
             # torch.
             if not (
