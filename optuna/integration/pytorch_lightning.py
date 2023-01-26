@@ -11,7 +11,7 @@ from optuna.storages._rdb.storage import RDBStorage
 # Define key names of `Trial.system_attrs`.
 _PRUNED_KEY = "ddp_pl:pruned"
 _EPOCH_KEY = "ddp_pl:epoch"
-
+_PRUNED_MESSAGE_KEY = "ddp_pl:pruned_message"
 
 with optuna._imports.try_import() as _imports:
     import pytorch_lightning as pl
@@ -56,16 +56,15 @@ class PyTorchLightningPruningCallback(Callback):
         self._trial = trial
         self.monitor = monitor
         self.is_ddp_backend = False
-        self._pruned = False
-        self._message = ""
 
     def on_fit_start(self, trainer: Trainer, pl_module: "pl.LightningModule") -> None:
-        os.environ["PL_RECONCILE_PROCESS"] = "0"
-        trainer.strategy._rank_0_will_call_children_scripts = False
         self.is_ddp_backend = trainer._accelerator_connector.is_distributed
         if self.is_ddp_backend:
             if version.parse(pl.__version__) < version.parse("1.5.0"):  # type: ignore
                 raise ValueError("PyTorch Lightning>=1.5.0 is required in DDP.")
+            # if it were not for this block, fitting is launched even if unsupported storage 
+            # is used. Note that the ValueError is transformed into ProcessRaisedException inside
+            # torch.
             if not (
                 isinstance(self._trial.study._storage, _CachedStorage)
                 and isinstance(self._trial.study._storage._backend, RDBStorage)
@@ -82,9 +81,8 @@ class PyTorchLightningPruningCallback(Callback):
         # at epoch 0. The related page is
         # https://github.com/PyTorchLightning/pytorch-lightning/issues/1391.
         if trainer.sanity_checking:
+            print("\ntrainer.sanity_checking is True")
             return
-
-        epoch = pl_module.current_epoch
 
         current_score = trainer.callback_metrics.get(self.monitor)
         if current_score is None:
@@ -95,52 +93,80 @@ class PyTorchLightningPruningCallback(Callback):
             warnings.warn(message)
             return
 
+        epoch = pl_module.current_epoch
         should_stop = False
         if trainer.is_global_zero:
+            print(
+                "\non_validation_end called from grobal zero",
+                os.getpid(),
+                id(self),
+                id(self._trial),
+            )
             self._trial.report(current_score.item(), step=epoch)
             should_stop = self._trial.should_prune()
-            print("validation_step called", should_stop, epoch, os.getpid())
+        print(
+            "on_validation_end called", should_stop, epoch, os.getpid(), id(self), id(self._trial)
+        )
 
         should_stop = trainer.strategy.broadcast(should_stop)
         if not should_stop:
             return
-        print("should_stop is True")
+        print(
+            "After broad cast, should_stop is",
+            should_stop,
+            epoch,
+            os.getpid(),
+            id(self),
+            id(self._trial),
+        )
 
         if not self.is_ddp_backend:
             message = "Trial was pruned at epoch {}.".format(epoch)
             raise optuna.TrialPruned(message)
         else:
-            print("self.is_ddp_backend is True")
+            print(
+                "self.is_ddp_backend is True",
+                should_stop,
+                should_stop,
+                epoch,
+                os.getpid(),
+                id(self),
+                id(self._trial),
+            )
             # Stop every DDP process if global rank 0 process decides to stop.
-            trainer.should_stop = True
             if trainer.is_global_zero:
-                print("trainer.is_global_zero is True")
+                print(
+                    "trainer.is_global_zero is True",
+                    should_stop,
+                    epoch,
+                    os.getpid(),
+                    id(self),
+                    id(self._trial),
+                )
                 self._trial.storage.set_trial_system_attr(self._trial._trial_id, _PRUNED_KEY, True)
+                self._trial.storage.set_trial_system_attr(
+                    self._trial._trial_id,
+                    _PRUNED_MESSAGE_KEY,
+                    "Trial was pruned at epoch {}.".format(epoch),
+                )
                 self._trial.storage.set_trial_system_attr(self._trial._trial_id, _EPOCH_KEY, epoch)
-                self._message = "Trial was pruned at epoch {}.".format(epoch)
-                self._pruned = True
-
-    def on_fit_end(self, trainer: Trainer, pl_module: LightningModule) -> None:
-        if not self.is_ddp_backend:
-            return
-
-        # Because on_validation_end is executed in spawned processes,
-        # _trial.report is necessary to update the memory in main process, not to update the RDB.
-        _trial_id = self._trial._trial_id
-        _study = self._trial.study
-        # _trial = _study._storage._backend.get_trial(_trial_id)  # type: ignore
-        _trial_system_attrs = _study._storage.get_trial_system_attrs(_trial_id)
-        is_pruned = _trial_system_attrs.get(_PRUNED_KEY)
-        epoch = _trial_system_attrs.get(_EPOCH_KEY)
-        if is_pruned:
-            self._message = "Trial was pruned at epoch {}.".format(epoch)
-            self._pruned = True
-        # intermediate_values = _trial.intermediate_values
-        # for step, value in intermediate_values.items():
-        #    print("on_fit_end called", step, os.getpid())
-        #    self._trial.report(value, step=step)
 
     def check_pruned(self) -> None:
         """Raise :class:`optuna.TrialPruned` manually if pruned."""
-        if self._pruned:
-            raise optuna.TrialPruned(self._message)
+
+        _trial_id = self._trial._trial_id
+        _study = self._trial.study
+        _trial_system_attrs = _study._storage._backend.get_trial_system_attrs(  # type: ignore[attr-defined] # NOQA: E501
+            _trial_id
+        )
+        is_pruned = _trial_system_attrs.get(_PRUNED_KEY)
+        print(
+            "check_pruned called",
+            is_pruned,
+            os.getpid(),
+            id(self),
+            id(self._trial),
+        )
+        if is_pruned:
+            message = _trial_system_attrs.get(_PRUNED_MESSAGE_KEY)
+            raise optuna.TrialPruned(message)

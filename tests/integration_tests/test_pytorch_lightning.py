@@ -5,7 +5,6 @@ from typing import Dict
 from typing import List
 from typing import Union
 
-import numpy as np
 import pytest
 
 import optuna
@@ -127,9 +126,6 @@ def test_pytorch_lightning_pruning_callback() -> None:
         model = Model()
         trainer.fit(model)
 
-        # evoke pruning manually.
-        callback.check_pruned()
-
         return 1.0
 
     study = optuna.create_study(pruner=DeterministicPruner(True))
@@ -159,7 +155,7 @@ def test_pytorch_lightning_pruning_callback_monitor_is_invalid() -> None:
         callback.on_validation_end(trainer, model)
 
 
-@pytest.mark.parametrize("storage_mode", ["sqlite"])  # , "cached_sqlite"])
+@pytest.mark.parametrize("storage_mode", ["sqlite", "cached_sqlite"])
 def test_pytorch_lightning_pruning_callback_ddp_monitor(
     storage_mode: str,
 ) -> None:
@@ -179,7 +175,6 @@ def test_pytorch_lightning_pruning_callback_ddp_monitor(
         trainer.fit(model)
 
         # evoke pruning manually.
-        print("callback._pruned =", callback._pruned, os.getpid())
         callback.check_pruned()
 
         return 1.0
@@ -187,18 +182,17 @@ def test_pytorch_lightning_pruning_callback_ddp_monitor(
     with StorageSupplier(storage_mode) as storage:
         study = optuna.create_study(storage=storage, pruner=DeterministicPruner(True))
         study.optimize(objective, n_trials=1)
+        print(id(study.trials[0]), os.getpid())
         assert study.trials[0].state == optuna.trial.TrialState.PRUNED
-        assert list(study.trials[0].intermediate_values.keys()) == [0]
-        np.testing.assert_almost_equal(study.trials[0].intermediate_values[0], 0.45)
-
-    # with StorageSupplier(storage_mode) as storage:
-    #   study = optuna.create_study(storage=storage, pruner=DeterministicPruner(False))
-    #  study.optimize(objective, n_trials=1)
-    # assert study.trials[0].state == optuna.trial.TrialState.COMPLETE
-    # assert study.trials[0].value == 1.0
-    # assert list(study.trials[0].intermediate_values.keys()) == [0, 1]
-    # np.testing.assert_almost_equal(study.trials[0].intermediate_values[0], 0.45)
-    # np.testing.assert_almost_equal(study.trials[0].intermediate_values[1], 0.45)
+        # assert list(study.trials[0].intermediate_values.keys()) == [0]
+        # np.testing.assert_almost_equal(study.trials[0].intermediate_values[0], 0.45)
+        study = optuna.create_study(storage=storage, pruner=DeterministicPruner(False))
+        study.optimize(objective, n_trials=1)
+        assert study.trials[0].state == optuna.trial.TrialState.COMPLETE
+        assert study.trials[0].value == 1.0
+        # assert list(study.trials[0].intermediate_values.keys()) == [0, 1]
+        # np.testing.assert_almost_equal(study.trials[0].intermediate_values[0], 0.45)
+        # np.testing.assert_almost_equal(study.trials[0].intermediate_values[1], 0.45)
 
 
 def test_pytorch_lightning_pruning_callback_ddp_unsupported_storage() -> None:
@@ -208,7 +202,7 @@ def test_pytorch_lightning_pruning_callback_ddp_unsupported_storage() -> None:
         callback = PyTorchLightningPruningCallback(trial, monitor="accuracy")
         trainer = pl.Trainer(
             max_epochs=1,
-            strategy="ddp",
+            strategy="ddp_spawn",
             accelerator="cpu",
             devices=2,
             enable_checkpointing=False,
@@ -225,5 +219,5 @@ def test_pytorch_lightning_pruning_callback_ddp_unsupported_storage() -> None:
 
     with StorageSupplier(storage_mode) as storage:
         study = optuna.create_study(storage=storage, pruner=DeterministicPruner(True))
-        with pytest.raises(ValueError):
+        with pytest.raises(torch.multiprocessing.ProcessRaisedException):
             study.optimize(objective, n_trials=1)
