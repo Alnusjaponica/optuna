@@ -107,7 +107,8 @@ class PyTorchLightningPruningCallback(Callback):
             _study = self._trial.study
             _trial_system_attrs = _study._storage.get_trial_system_attrs(_trial_id)
             intermediate_values = _trial_system_attrs.get(_INTERMEDIATE_VALUE)
-            intermediate_values[epoch] = current_score.item()
+            if isinstance(intermediate_values, dict):
+                intermediate_values[epoch] = current_score.item()
             self._trial.storage.set_trial_system_attr(
                 self._trial._trial_id, _INTERMEDIATE_VALUE, intermediate_values
             )
