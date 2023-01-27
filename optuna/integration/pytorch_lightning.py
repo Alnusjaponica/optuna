@@ -9,9 +9,10 @@ from optuna.storages._rdb.storage import RDBStorage
 
 
 # Define key names of `Trial.system_attrs`.
-_PRUNED_KEY = "ddp_pl:pruned"
 _EPOCH_KEY = "ddp_pl:epoch"
-_PRUNED_MESSAGE_KEY = "ddp_pl:pruned_message"
+_PRUNED_KEY = "ddp_pl:pruned"
+_MESSAGE_KEY = "ddp_pl:message"
+_INTERMEDIATE_VALUE = "ddp_pl:intermediate_value"
 
 with optuna._imports.try_import() as _imports:
     import pytorch_lightning as pl
@@ -62,7 +63,7 @@ class PyTorchLightningPruningCallback(Callback):
         if self.is_ddp_backend:
             if version.parse(pl.__version__) < version.parse("1.5.0"):  # type: ignore
                 raise ValueError("PyTorch Lightning>=1.5.0 is required in DDP.")
-            # if it were not for this block, fitting is launched even if unsupported storage
+            # if it were not for this block, fitting is started even if unsupported storage
             # is used. Note that the ValueError is transformed into ProcessRaisedException inside
             # torch.
             if not (
@@ -102,7 +103,11 @@ class PyTorchLightningPruningCallback(Callback):
                 id(self),
                 id(self._trial),
             )
+            # update intermediate value
             self._trial.report(current_score.item(), step=epoch)
+            self._trial.storage.set_trial_system_attr(
+                self._trial._trial_id, _INTERMEDIATE_VALUE + "-" + str(epoch), current_score.item()
+            )
             should_stop = self._trial.should_prune()
         print(
             "on_validation_end called", should_stop, epoch, os.getpid(), id(self), id(self._trial)
@@ -142,13 +147,13 @@ class PyTorchLightningPruningCallback(Callback):
                     id(self),
                     id(self._trial),
                 )
+                self._trial.storage.set_trial_system_attr(self._trial._trial_id, _EPOCH_KEY, epoch)
                 self._trial.storage.set_trial_system_attr(self._trial._trial_id, _PRUNED_KEY, True)
                 self._trial.storage.set_trial_system_attr(
                     self._trial._trial_id,
-                    _PRUNED_MESSAGE_KEY,
+                    _MESSAGE_KEY,
                     "Trial was pruned at epoch {}.".format(epoch),
                 )
-                self._trial.storage.set_trial_system_attr(self._trial._trial_id, _EPOCH_KEY, epoch)
 
     def check_pruned(self) -> None:
         """Raise :class:`optuna.TrialPruned` manually if pruned."""
@@ -159,6 +164,12 @@ class PyTorchLightningPruningCallback(Callback):
             _trial_id
         )
         is_pruned = _trial_system_attrs.get(_PRUNED_KEY)
+        for key in _trial_system_attrs.keys():
+            if key.startswith(_INTERMEDIATE_VALUE):
+                _, epoch = key.split("-")
+                score = _trial_system_attrs.get(key)
+                self._trial.report(score, step=int(epoch))
+
         print(
             "check_pruned called",
             is_pruned,
@@ -167,5 +178,5 @@ class PyTorchLightningPruningCallback(Callback):
             id(self._trial),
         )
         if is_pruned:
-            message = _trial_system_attrs.get(_PRUNED_MESSAGE_KEY)
+            message = _trial_system_attrs.get(_MESSAGE_KEY)
             raise optuna.TrialPruned(message)
