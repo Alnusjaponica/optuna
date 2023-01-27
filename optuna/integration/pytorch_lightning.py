@@ -1,4 +1,3 @@
-import os
 import warnings
 
 from packaging import version
@@ -57,13 +56,18 @@ class PyTorchLightningPruningCallback(Callback):
         self._trial = trial
         self.monitor = monitor
         self.is_ddp_backend = False
+        self._trial.storage.set_trial_system_attr(
+            self._trial._trial_id,
+            _INTERMEDIATE_VALUE,
+            dict(),
+        )
 
     def on_fit_start(self, trainer: Trainer, pl_module: "pl.LightningModule") -> None:
         self.is_ddp_backend = trainer._accelerator_connector.is_distributed
         if self.is_ddp_backend:
             if version.parse(pl.__version__) < version.parse("1.5.0"):  # type: ignore
                 raise ValueError("PyTorch Lightning>=1.5.0 is required in DDP.")
-            # if it were not for this block, fitting is started even if unsupported storage
+            # If it were not for this block, fitting is started even if unsupported storage
             # is used. Note that the ValueError is transformed into ProcessRaisedException inside
             # torch.
             if not (
@@ -82,7 +86,6 @@ class PyTorchLightningPruningCallback(Callback):
         # at epoch 0. The related page is
         # https://github.com/PyTorchLightning/pytorch-lightning/issues/1391.
         if trainer.sanity_checking:
-            print("\ntrainer.sanity_checking is True")
             return
 
         current_score = trainer.callback_metrics.get(self.monitor)
@@ -97,56 +100,31 @@ class PyTorchLightningPruningCallback(Callback):
         epoch = pl_module.current_epoch
         should_stop = False
         if trainer.is_global_zero:
-            print(
-                "\non_validation_end called from global zero",
-                os.getpid(),
-                id(self),
-                id(self._trial),
-            )
-            # update intermediate value
             self._trial.report(current_score.item(), step=epoch)
-            self._trial.storage.set_trial_system_attr(
-                self._trial._trial_id, _INTERMEDIATE_VALUE + "-" + str(epoch), current_score.item()
-            )
             should_stop = self._trial.should_prune()
-        print(
-            "on_validation_end called", should_stop, epoch, os.getpid(), id(self), id(self._trial)
-        )
+            # update intermediate value in storage
+            _trial_id = self._trial._trial_id
+            _study = self._trial.study
+            _trial_system_attrs = _study._storage.get_trial_system_attrs(_trial_id)
+            intermediate_values = _trial_system_attrs.get(_INTERMEDIATE_VALUE)
+            intermediate_values[epoch] = current_score.item()
+            self._trial.storage.set_trial_system_attr(
+                self._trial._trial_id, _INTERMEDIATE_VALUE, intermediate_values
+            )
 
-        should_stop = trainer.strategy.broadcast(should_stop)
+        # stop every ddp process if any world process decides to stop
+        should_stop = trainer.strategy.reduce_boolean_decision(should_stop, all=False)
+        trainer.should_stop = trainer.should_stop or should_stop
         if not should_stop:
             return
-        print(
-            "After broad cast, should_stop is",
-            should_stop,
-            epoch,
-            os.getpid(),
-            id(self),
-            id(self._trial),
-        )
+        self.stopped_epoch = epoch
 
         if not self.is_ddp_backend:
             message = "Trial was pruned at epoch {}.".format(epoch)
             raise optuna.TrialPruned(message)
         else:
-            print(
-                "self.is_ddp_backend is True",
-                should_stop,
-                epoch,
-                os.getpid(),
-                id(self),
-                id(self._trial),
-            )
-            # Stop every DDP process if global rank 0 process decides to stop.
+            # update system_attr from global zero process
             if trainer.is_global_zero:
-                print(
-                    "trainer.is_global_zero is True",
-                    should_stop,
-                    epoch,
-                    os.getpid(),
-                    id(self),
-                    id(self._trial),
-                )
                 self._trial.storage.set_trial_system_attr(self._trial._trial_id, _EPOCH_KEY, epoch)
                 self._trial.storage.set_trial_system_attr(self._trial._trial_id, _PRUNED_KEY, True)
                 self._trial.storage.set_trial_system_attr(
@@ -164,19 +142,9 @@ class PyTorchLightningPruningCallback(Callback):
             _trial_id
         )
         is_pruned = _trial_system_attrs.get(_PRUNED_KEY)
-        for key in _trial_system_attrs.keys():
-            if key.startswith(_INTERMEDIATE_VALUE):
-                _, epoch = key.split("-")
-                score = _trial_system_attrs.get(key)
-                self._trial.report(score, step=int(epoch))
-
-        print(
-            "check_pruned called",
-            is_pruned,
-            os.getpid(),
-            id(self),
-            id(self._trial),
-        )
+        intermediate_values = _trial_system_attrs.get(_INTERMEDIATE_VALUE)
+        for epoch, score in intermediate_values.items():
+            self._trial.report(score, step=int(epoch))
         if is_pruned:
             message = _trial_system_attrs.get(_MESSAGE_KEY)
             raise optuna.TrialPruned(message)
