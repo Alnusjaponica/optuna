@@ -59,8 +59,8 @@ class PyTorchLightningPruningCallback(Callback):
     def on_fit_start(self, trainer: Trainer, pl_module: "pl.LightningModule") -> None:
         self.is_ddp_backend = trainer._accelerator_connector.is_distributed
         if self.is_ddp_backend:
-            if version.parse(pl.__version__) < version.parse("1.5.0"):  # type: ignore
-                raise ValueError("PyTorch Lightning>=1.5.0 is required in DDP.")
+            if version.parse(pl.__version__) < version.parse("1.6.0"):  # type: ignore
+                raise ValueError("PyTorch Lightning>=1.6.0 is required in DDP.")
             if not (
                 isinstance(self._trial.study._storage, _CachedStorage)
                 and isinstance(self._trial.study._storage._backend, RDBStorage)
@@ -71,7 +71,6 @@ class PyTorchLightningPruningCallback(Callback):
                 )
 
     def on_validation_end(self, trainer: Trainer, pl_module: LightningModule) -> None:
-
         # When the trainer calls `on_validation_end` for sanity check,
         # do not call `trial.report` to avoid calling `trial.report` multiple times
         # at epoch 0. The related page is

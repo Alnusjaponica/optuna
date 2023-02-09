@@ -24,7 +24,6 @@ from optuna.trial import Trial
 
 @pytest.mark.parametrize("use_hyperband", [False, True])
 def test_hyperopt_parameters(use_hyperband: bool) -> None:
-
     sampler = TPESampler(**TPESampler.hyperopt_parameters())
     study = optuna.create_study(
         sampler=sampler, pruner=optuna.pruners.HyperbandPruner() if use_hyperband else None
@@ -548,7 +547,7 @@ def test_sample_independent_log_uniform_distributions() -> None:
     assert uniform_suggestion != loguniform_suggestion
 
 
-def test_sample_independent_disrete_uniform_distributions() -> None:
+def test_sample_independent_discrete_uniform_distributions() -> None:
     """Test samples from discrete have expected intervals."""
 
     study = optuna.create_study()
@@ -736,7 +735,6 @@ def test_get_observation_pairs(
     expected_violations: List[float],
 ) -> None:
     def objective(trial: Trial) -> float:
-
         x = trial.suggest_int("x", 5, 5)
         z = trial.suggest_categorical("z", [None])
         if trial.number == 0:
@@ -802,7 +800,6 @@ def test_get_observation_pairs_multi(
     expected_violations: List[float],
 ) -> None:
     def objective(trial: Trial) -> float:
-
         x = trial.suggest_int("x", 5, 5)
         y = trial.suggest_int("y", 6, 6)
         if trial.number == 0:
