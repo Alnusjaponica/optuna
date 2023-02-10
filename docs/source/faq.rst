@@ -617,3 +617,54 @@ will retry failed trials when a new trial starts to evaluate.
     )
 
     study = optuna.create_study(storage=storage)
+
+
+How can deal with permutation as a parameter?
+--------------------------------------------
+Sometimes you may want to use combinatorial search space such as permutation. 
+However, it is difficult to suggest combinatorial parameters as they are and it is not straightforward to suggest them using existing API.
+
+For permutation set out of :math:`n` items, 
+there exists a convenient technique is to re-parametrize permutation search space as independent :math:`n` dimension int search space since with `Lehmer code <https://en.wikipedia.org/wiki/Lehmer_code>`_
+as explained `here <https://oss-vizier.readthedocs.io/en/latest/guides/user/search_spaces.html#combinatorial-reparamterization>`_.
+The :math:`i`-th entry of Lehmer code keeps how many inversions the :math:`i`-th entry of the permutation has after itself
+and the sum of the Lehmer code entries corresponds to the minimum necessary adjacent transpositions to transform the permutation into the identity permutation.
+Therefore, Lehmer code not only encodes permutations into independent int space, but also represents "positions" in the permutation set.
+Optuna implementation is as follows:  
+
+.. code-block:: python
+    import optuna
+    import numpy as np
+
+    points = np.array(
+            [
+                [0., 0.],
+                [1., 0.],
+                [0., 1.],
+                [1., 1.],
+                [2., 2.]
+            ]
+    )
+    n = len(points)
+
+    def decode(lehmer_code):
+        all_indices = list(range(n))
+        output = []
+        for k in lehmer_code:
+            value = all_indices[k]
+            output.append(value)
+            all_indices.remove(value)
+        return output
+
+    def objective(trial):
+        lehmer_code = [trial.suggest_int(f"x{i}", 0, n-i-1) for i in range(n)]
+        permutation = decode(lehmer_code)
+        total_distance = 0
+        for i in range(n):
+            total_distance += np.linalg.norm(points[permutation[i%n]]- points[permutation[(i+1)%n]])
+        return total_distance
+
+    study = optuna.create_study()
+    study.optimize(objective, n_trials=10)
+    lehmer_code = study.best_params.values()
+    print(decode(lehmer_code))
