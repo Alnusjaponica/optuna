@@ -131,12 +131,12 @@ def erf(x: np.ndarray) -> np.ndarray:
         sign = np.sign(x)
         x = np.abs(x)
         s = one / (x * x)
-        R = Polynomial([ra0, ra1, ra2, ra3, ra4, ra5, ra6, ra7])(
+        R = Polynomial([ra0, ra1, ra2, ra3, ra4, ra5, ra6, ra7])(  # type: ignore[no-untyped-call]
             s
-        )  # type: ignore[no-untyped-call]
-        S = Polynomial([one, sa1, sa2, sa3, sa4, sa5, sa6, sa7, sa8])(
-            s
-        )  # type: ignore[no-untyped-call]
+        )
+        S = Polynomial(  # type: ignore[no-untyped-call]
+            [one, sa1, sa2, sa3, sa4, sa5, sa6, sa7, sa8]
+        )(s)
         # the following 3 lines are omitted for the following reasons:
         # (1) there are no easy way to implement SET_LOW_WORD equivalent method in NumPy
         # (2) we don't need very high accuracy in our use case.
@@ -151,9 +151,9 @@ def erf(x: np.ndarray) -> np.ndarray:
         x = np.abs(x)
         s = one / (x * x)
         R = Polynomial([rb0, rb1, rb2, rb3, rb4, rb5, rb6])(s)  # type: ignore[no-untyped-call]
-        S = Polynomial([one, sb1, sb2, sb3, sb4, sb5, sb6, sb7])(
+        S = Polynomial([one, sb1, sb2, sb3, sb4, sb5, sb6, sb7])(  # type: ignore[no-untyped-call]
             s
-        )  # type: ignore[no-untyped-call]
+        )
         # z = x
         # SET_LOW_WORD(z, 0)
         # r = np.exp(-z * z - 0.5625) * np.exp((z - x) * (z + x) + R / S)
