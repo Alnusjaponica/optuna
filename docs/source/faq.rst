@@ -642,10 +642,11 @@ Optuna implementation is as follows:
                 [1., 0.],
                 [0., 1.],
                 [1., 1.],
-                [2., 2.]
+                [2., 2.],
+                [-1., -1.]
             ]
     )
-    n = len(points)
+    n = len(points) - 1
 
     def decode(lehmer_code):
         all_indices = list(range(n))
@@ -659,12 +660,15 @@ Optuna implementation is as follows:
     def objective(trial):
         lehmer_code = [trial.suggest_int(f"x{i}", 0, n-i-1) for i in range(n)]
         permutation = decode(lehmer_code)
+        permutation.append(n)
         total_distance = 0
-        for i in range(n):
+        for i in range(n+1):
             total_distance += np.linalg.norm(points[permutation[i%n]]- points[permutation[(i+1)%n]])
         return total_distance
 
     study = optuna.create_study()
     study.optimize(objective, n_trials=10)
+    permutation = decode(lehmer_code)
+    permutation.append(n)
     lehmer_code = study.best_params.values()
     print(decode(lehmer_code))
