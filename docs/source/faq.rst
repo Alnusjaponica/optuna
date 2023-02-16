@@ -620,7 +620,7 @@ will retry failed trials when a new trial starts to evaluate.
 
 
 How can deal with permutation as a parameter?
---------------------------------------------
+---------------------------------------------
 Sometimes you may want to use combinatorial search space such as permutation. 
 However, it is difficult to suggest combinatorial parameters as they are and it is not straightforward to suggest them using existing API.
 
@@ -633,6 +633,7 @@ Therefore, Lehmer code not only encodes permutations into independent int space,
 Optuna implementation is as follows:  
 
 .. code-block:: python
+
     import optuna
     import numpy as np
 
