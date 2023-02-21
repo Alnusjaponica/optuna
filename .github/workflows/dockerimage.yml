@@ -34,8 +34,6 @@ jobs:
         - python_version: '3.11'
           build_type: 'dev'
 
-    # This action cannot be executed in the forked repository.
-    if: github.repository == 'optuna/optuna'
     steps:
     - uses: actions/checkout@v3
 
