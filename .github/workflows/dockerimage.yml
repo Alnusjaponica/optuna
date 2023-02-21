@@ -4,8 +4,6 @@ on:
   push:
     branches:
       - master
-  release:
-    types: [published]
   pull_request:
     paths:
       - .github/workflows/dockerimage.yml
@@ -71,11 +69,3 @@ jobs:
     - name: Verify the built image
       run: |
         docker run "${HUB_TAG}" optuna --version
-
-    - name: Login & Push to Docker Hub
-      if: ${{ github.event_name != 'pull_request' }}
-      env:
-        DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
-      run: |
-        echo "${DOCKER_HUB_TOKEN}" | docker login -u optunabot --password-stdin
-        docker push "${HUB_TAG}"
