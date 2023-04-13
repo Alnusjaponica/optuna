@@ -43,8 +43,18 @@ jobs:
 
     - name: Generate coverage report
       run: |
-        pip install pytest
+        python -m pip install --upgrade pip
+        pip install --progress-bar off .
+        python -c 'import optuna'
+        optuna --version
+
+        pip install --progress-bar off .[test]
+        pip install --progress-bar off .[optional]
+        pip install --progress-bar off .[integration] --extra-index-url https://download.pytorch.org/whl/cpu
+        pip install "pytorch-lightning<2.0.0"
         pip install pytest-cov
+
+        echo 'import coverage; coverage.process_startup()' > sitecustomize.py
         pytest --cov=./ --cov-report=xml
 
     - name: Output installed packages
