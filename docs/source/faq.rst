@@ -621,15 +621,16 @@ will retry failed trials when a new trial starts to evaluate.
 
 How can deal with permutation as a parameter?
 ---------------------------------------------
-Sometimes you may want to use combinatorial search space such as permutation. 
-However, it is difficult to suggest combinatorial parameters as they are and it is not straightforward to suggest them using existing API.
+Sometimes, you may want to use a combinatorial search space, such as permutations. 
+However, suggesting combinatorial parameters in their original form is challenging, and it is not straightforward to accomplish this task using existing APIs.
 
-For permutation set out of :math:`n` items, 
-there exists a convenient technique is to re-parametrize permutation search space as independent :math:`n` dimension int search space since with `Lehmer code <https://en.wikipedia.org/wiki/Lehmer_code>`_
-as explained `here <https://oss-vizier.readthedocs.io/en/latest/guides/user/search_spaces.html#combinatorial-reparamterization>`_.
-The :math:`i`-th entry of Lehmer code keeps how many inversions the :math:`i`-th entry of the permutation has after itself
+To address this, a convenient technique exists for permutation sets of :math:n items. 
+It involves re-parametrization of permutation search space as an independent :math:n-dimensional integer search space. 
+This technique is based on the concept of `Lehmer code <https://en.wikipedia.org/wiki/Lehmer_code>`_, which is also explained `here <https://oss-vizier.readthedocs.io/en/latest/guides/user/search_spaces.html#combinatorial-reparamterization>`_.
+
+In Lehmer code, the :math:`i`-th entry keeps how many inversions the :math:`i`-th entry of the permutation has after itself
 and the sum of the Lehmer code entries corresponds to the minimum necessary adjacent transpositions to transform the permutation into the identity permutation.
-Therefore, Lehmer code not only encodes permutations into independent int space, but also represents "positions" in the permutation set.
+Therefore, Lehmer code not only encodes permutations into independent int space, but also provides a representation of the "positions" within the permutation set.
 Optuna implementation is as follows:  
 
 .. code-block:: python
