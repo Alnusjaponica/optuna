@@ -621,16 +621,19 @@ will retry failed trials when a new trial starts to evaluate.
 
 How can deal with permutation as a parameter?
 ---------------------------------------------
-Sometimes, you may want to use a combinatorial search space, such as permutations. 
-However, suggesting combinatorial parameters in their original form is challenging, and it is not straightforward to accomplish this task using existing APIs.
 
-To address this, a convenient technique exists for permutation sets of :math:n items. 
-It involves re-parametrization of permutation search space as an independent :math:n-dimensional integer search space. 
-This technique is based on the concept of `Lehmer code <https://en.wikipedia.org/wiki/Lehmer_code>`_, which is also explained `here <https://oss-vizier.readthedocs.io/en/latest/guides/user/search_spaces.html#combinatorial-reparamterization>`_.
+Although it is not straightforward to deal with combinatorial search spaces like permutations with existing API, there exists a convenient technique for handling them. 
+It involves re-parametrization of permutation search space of :math:`n` items as an independent :math:`n`-dimensional integer search space. 
+This technique is based on the concept of `Lehmer code <https://en.wikipedia.org/wiki/Lehmer_code>`_, which is also explained in: `Vizier document <https://oss-vizier.readthedocs.io/en/latest/guides/user/search_spaces.html#combinatorial-reparamterization>`_.
 
-In Lehmer code, the :math:`i`-th entry keeps how many inversions the :math:`i`-th entry of the permutation has after itself
-and the sum of the Lehmer code entries corresponds to the minimum necessary adjacent transpositions to transform the permutation into the identity permutation.
-Therefore, Lehmer code not only encodes permutations into independent int space, but also provides a representation of the "positions" within the permutation set.
+A Lehmer code of a sequence is the sequence of integers in the same size, whose :math:`i`-th entry denotes how many inversions the :math:`i`-th entry of the permutation has after itself.
+In other words, the :math:`i`-th entry of the Lehmer code represents the number of entries that are located after and are smaller than the :math:`i`-th entry of the original sequence.
+For instance, the Lehmer code of the permutation :math:`(3, 1, 4, 2, 0)` is :math:`(3, 1, 2, 1, 0)`.
+
+Not only does the Lehmer code provide a unique encoding of permutations into an integer space, but it also has some desirable properties.
+For example, the sum of a Lehmer code entries is equal to the minimum number of adjacent transpositions necessary to transform the corresponding permutation into the identity permutation. 
+Additionally, the lexicographical order of the encodings of two permutations is the same as that of the original sequence. 
+Therefore, Lehmer code preserves "closeness" among permutations in some sense, which is important for the optimization algorithm.
 Optuna implementation is as follows:  
 
 .. code-block:: python
