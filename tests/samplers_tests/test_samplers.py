@@ -53,6 +53,7 @@ parametrize_sampler = pytest.mark.parametrize(
             marks=pytest.mark.integration,
         ),
         optuna.samplers.NSGAIISampler,
+        optuna.samplers.NSGAIIISampler,
         optuna.samplers.QMCSampler,
         pytest.param(
             lambda: optuna.integration.BoTorchSampler(n_startup_trials=0),
@@ -82,6 +83,7 @@ parametrize_multi_objective_sampler = pytest.mark.parametrize(
     "multi_objective_sampler_class",
     [
         optuna.samplers.NSGAIISampler,
+        optuna.samplers.NSGAIIISampler,
         lambda: optuna.samplers.TPESampler(n_startup_trials=0),
         pytest.param(
             lambda: optuna.integration.BoTorchSampler(n_startup_trials=0),
@@ -104,6 +106,7 @@ sampler_class_with_seed: Dict[str, Tuple[Callable[[int], BaseSampler], bool]] = 
     "SkoptSampler": (lambda seed: optuna.integration.SkoptSampler(seed=seed), True),
     "PyCmaSampler": (lambda seed: optuna.integration.PyCmaSampler(seed=seed), True),
     "NSGAIISampler": (lambda seed: optuna.samplers.NSGAIISampler(seed=seed), False),
+    "NSGAIIISampler": (lambda seed: optuna.samplers.NSGAIIISampler(seed=seed), False),
     "QMCSampler": (lambda seed: optuna.samplers.QMCSampler(seed=seed), False),
     "BoTorchSampler": (lambda seed: optuna.integration.BoTorchSampler(seed=seed), True),
 }
@@ -148,6 +151,7 @@ parametrize_sampler_name_with_seed = pytest.mark.parametrize(
             marks=pytest.mark.integration,
         ),
         (optuna.samplers.NSGAIISampler, True, True),
+        (optuna.samplers.NSGAIIISampler, True, True),
         (
             lambda: optuna.samplers.PartialFixedSampler(
                 fixed_params={"x": 0}, base_sampler=optuna.samplers.RandomSampler()
@@ -1074,3 +1078,24 @@ def test_reproducible_in_other_process(sampler_name: str, unset_seed_in_test: No
     assert not (hash_dict[0] == hash_dict[1] == hash_dict[2])
     # But the sequences are expected to be the same.
     assert sequence_dict[0] == sequence_dict[1] == sequence_dict[2]
+
+
+@pytest.mark.parametrize("n_jobs", [1, 2])
+@parametrize_relative_sampler
+def test_cache_is_invalidated(
+    n_jobs: int, relative_sampler_class: Callable[[], BaseSampler]
+) -> None:
+    sampler = relative_sampler_class()
+    study = optuna.study.create_study(sampler=sampler)
+
+    def objective(trial: Trial) -> float:
+        assert trial._relative_params is None
+        assert study._thread_local.cached_all_trials is None
+
+        trial.suggest_float("x", -10, 10)
+        trial.suggest_float("y", -10, 10)
+        assert trial._relative_params is not None
+        assert study._thread_local.cached_all_trials is not None
+        return -1
+
+    study.optimize(objective, n_trials=10, n_jobs=n_jobs)

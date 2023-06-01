@@ -58,10 +58,17 @@ jobs:
         pip install --progress-bar off .[optional]
         pip install --progress-bar off .[integration] --extra-index-url https://download.pytorch.org/whl/cpu
 
+    - name: Output installed packages
+      run: |
+        pip freeze --all
+    - name: Output dependency tree
+      run: |
+        pip install pipdeptree
+        pipdeptree
+
     - name: Tests
       run: |
         export OMPI_MCA_rmaps_base_oversubscribe=yes
-        mpirun -n 2 -- pytest tests/integration_tests/test_chainermn.py
 
         if [ ${{ matrix.python-version }} != 3.11 ]; then
           mpirun -n 2 -- pytest tests/integration_tests/test_pytorch_distributed.py

@@ -99,6 +99,14 @@ jobs:
         pip install -e .
         cd ..
 
+    - name: Output installed packages
+      run: |
+        pip freeze --all
+    - name: Output dependency tree
+      run: |
+        pip install pipdeptree
+        pipdeptree
+
     - name: Cache nasbench201-cifar10 dataset
       id: cache-nb201-cifar10-dataset
       uses: actions/cache@v3

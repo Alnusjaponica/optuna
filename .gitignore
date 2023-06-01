@@ -89,6 +89,7 @@ celerybeat-schedule
 .env
 
 # virtualenv
+.venv/
 venv/
 ENV/
 
@@ -116,10 +117,14 @@ docs/source/reference/generated/
 docs/source/reference/multi_objective/generated/
 docs/source/reference/visualization/generated/
 docs/source/reference/samplers/generated
-docs/source/tutorial/
+docs/source/tutorial/**
+!docs/source/tutorial/index.rst
 
 # asv
 .asv
 
 # Dask
 dask-worker-space/
+
+# PyTorch Lightning
+lightning_logs/

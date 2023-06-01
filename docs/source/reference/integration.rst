@@ -5,6 +5,11 @@ optuna.integration
 
 The :mod:`~optuna.integration` module contains classes used to integrate Optuna with external machine learning frameworks.
 
+.. note::
+   Optuna's integration modules for third-party libraries have started migrating from Optuna itself to a package called 
+   `optuna-integration`. Please check the `repository <https://github.com/optuna/optuna-integration>`_ and 
+   the `documentation <https://optuna-integration.readthedocs.io/en/latest/index.html>`_.
+
 For most of the ML frameworks supported by Optuna, the corresponding Optuna integration class serves only to implement a callback object and functions, compliant with the framework's specific callback API, to be called with each intermediate step in the model training. The functionality implemented in these callbacks across the different ML frameworks includes:
 
 (1) Reporting intermediate model scores back to the Optuna trial using :func:`optuna.trial.Trial.report`,
@@ -12,17 +17,6 @@ For most of the ML frameworks supported by Optuna, the corresponding Optuna inte
 (3) Reporting intermediate Optuna data such as the current trial number back to the framework, as done in :class:`~optuna.integration.MLflowCallback`.
 
 For scikit-learn, an integrated :class:`~optuna.integration.OptunaSearchCV` estimator is available that combines scikit-learn BaseEstimator functionality with access to a class-level ``Study`` object.
-
-AllenNLP
---------
-
-.. autosummary::
-   :toctree: generated/
-   :nosignatures:
-
-   optuna.integration.AllenNLPExecutor
-   optuna.integration.allennlp.dump_best_config
-   optuna.integration.AllenNLPPruningCallback
 
 BoTorch
 -------
@@ -37,15 +31,6 @@ BoTorch
    optuna.integration.botorch.qnehvi_candidates_func
    optuna.integration.botorch.qparego_candidates_func
 
-Catalyst
---------
-
-.. autosummary::
-   :toctree: generated/
-   :nosignatures:
-
-   optuna.integration.CatalystPruningCallback
-
 CatBoost
 --------
 
@@ -54,16 +39,6 @@ CatBoost
    :nosignatures:
 
    optuna.integration.CatBoostPruningCallback
-
-Chainer
--------
-
-.. autosummary::
-   :toctree: generated/
-   :nosignatures:
-
-   optuna.integration.ChainerPruningExtension
-   optuna.integration.ChainerMNStudy
 
 Dask
 ----
@@ -84,15 +59,6 @@ fast.ai
    optuna.integration.FastAIV1PruningCallback
    optuna.integration.FastAIV2PruningCallback
    optuna.integration.FastAIPruningCallback
-
-Keras
------
-
-.. autosummary::
-   :toctree: generated/
-   :nosignatures:
-
-   optuna.integration.KerasPruningCallback
 
 LightGBM
 --------
@@ -181,15 +147,6 @@ SHAP
 
    optuna.integration.ShapleyImportanceEvaluator
 
-skorch
-------
-
-.. autosummary::
-   :toctree: generated/
-   :nosignatures:
-
-    optuna.integration.SkorchPruningCallback
-
 TensorFlow
 ----------
 
@@ -198,8 +155,6 @@ TensorFlow
    :nosignatures:
 
    optuna.integration.TensorBoardCallback
-   optuna.integration.TensorFlowPruningHook
-   optuna.integration.TFKerasPruningCallback
 
 XGBoost
 -------

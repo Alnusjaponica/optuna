@@ -43,6 +43,14 @@ jobs:
         pip install --progress-bar off .[benchmark]
         asv machine --yes
 
+    - name: Output installed packages
+      run: |
+        pip freeze --all
+    - name: Output dependency tree
+      run: |
+        pip install pipdeptree
+        pipdeptree
+
     - name: Speed benchmarks
       run: |
         asv run --strict

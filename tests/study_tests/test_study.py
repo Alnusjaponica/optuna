@@ -3,6 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 import copy
 import multiprocessing
 import pickle
+import platform
 import threading
 import time
 from typing import Any
@@ -30,7 +31,9 @@ from optuna import Study
 from optuna import Trial
 from optuna import TrialPruned
 from optuna.exceptions import DuplicatedStudyError
+from optuna.exceptions import ExperimentalWarning
 from optuna.study import StudyDirection
+from optuna.study.study import _SYSTEM_ATTR_METRIC_NAMES
 from optuna.testing.objectives import fail_objective
 from optuna.testing.storages import STORAGE_MODES
 from optuna.testing.storages import StorageSupplier
@@ -526,6 +529,18 @@ def test_add_trial(storage_mode: str) -> None:
         assert study.best_value == 0.8
 
 
+def test_add_trial_invalid_values_length() -> None:
+    study = create_study()
+    trial = create_trial(values=[0, 0])
+    with pytest.raises(ValueError):
+        study.add_trial(trial)
+
+    study = create_study(directions=["minimize", "minimize"])
+    trial = create_trial(value=0)
+    with pytest.raises(ValueError):
+        study.add_trial(trial)
+
+
 @pytest.mark.parametrize("storage_mode", STORAGE_MODES)
 def test_add_trials(storage_mode: str) -> None:
     with StorageSupplier(storage_mode) as storage:
@@ -771,7 +786,9 @@ def test_optimize_with_progbar(n_jobs: int, capsys: _pytest.capture.CaptureFixtu
     assert "Best trial: 0" in err
     assert "Best value: 1" in err
     assert "10/10" in err
-    assert "100%" in err
+    if platform.system() != "Windows":
+        # Skip this assertion because the progress bar sometimes stops at 99% on Windows.
+        assert "100%" in err
 
 
 @pytest.mark.parametrize("n_jobs", [1, 2])
@@ -783,7 +800,9 @@ def test_optimize_without_progbar(n_jobs: int, capsys: _pytest.capture.CaptureFi
     assert "Best trial: 0" not in err
     assert "Best value: 1" not in err
     assert "10/10" not in err
-    assert "100%" not in err
+    if platform.system() != "Windows":
+        # Skip this assertion because the progress bar sometimes stops at 99% on Windows.
+        assert "100%" not in err
 
 
 def test_optimize_with_progbar_timeout(capsys: _pytest.capture.CaptureFixture) -> None:
@@ -794,7 +813,9 @@ def test_optimize_with_progbar_timeout(capsys: _pytest.capture.CaptureFixture) -
     assert "Best trial: 0" in err
     assert "Best value: 1" in err
     assert "00:02/00:02" in err
-    assert "100%" in err
+    if platform.system() != "Windows":
+        # Skip this assertion because the progress bar sometimes stops at 99% on Windows.
+        assert "100%" in err
 
 
 def test_optimize_with_progbar_parallel_timeout(capsys: _pytest.capture.CaptureFixture) -> None:
@@ -839,7 +860,9 @@ def test_optimize_without_progbar_timeout(
     assert "Best trial: 0" not in err
     assert "Best value: 1.0" not in err
     assert "00:02/00:02" not in err
-    assert "100%" not in err
+    if platform.system() != "Windows":
+        # Skip this assertion because the progress bar sometimes stops at 99% on Windows.
+        assert "100%" not in err
 
 
 @pytest.mark.parametrize("n_jobs", [1, 2])
@@ -853,7 +876,9 @@ def test_optimize_progbar_n_trials_prioritized(
     assert "Best trial: 0" in err
     assert "Best value: 1" in err
     assert "10/10" in err
-    assert "100%" in err
+    if platform.system() != "Windows":
+        # Skip this assertion because the progress bar sometimes stops at 99% on Windows.
+        assert "100%" in err
     assert "it" in err
 
 
@@ -1502,7 +1527,7 @@ def test_tell_from_another_process() -> None:
         assert study.best_value == 1.2
 
         # Should fail because the trial0 is already finished.
-        with pytest.raises(RuntimeError):
+        with pytest.raises(ValueError):
             pool.starmap(_process_tell, [(study, trial0, 1.2)])
 
 
@@ -1527,3 +1552,28 @@ def test_pop_waiting_trial_thread_safe(storage_mode: str) -> None:
             for future in as_completed(futures):
                 trial_id_set.add(future.result())
         assert len(trial_id_set) == num_enqueued
+
+
+def test_set_metric_names() -> None:
+    metric_names = ["v0", "v1"]
+    study = create_study(directions=["minimize", "minimize"])
+    study.set_metric_names(metric_names)
+
+    got_metric_names = study._storage.get_study_system_attrs(study._study_id).get(
+        _SYSTEM_ATTR_METRIC_NAMES
+    )
+    assert got_metric_names is not None
+    assert metric_names == got_metric_names
+
+
+def test_set_metric_names_experimental_warning() -> None:
+    study = create_study()
+    with pytest.warns(ExperimentalWarning):
+        study.set_metric_names(["v0"])
+
+
+def test_set_invalid_metric_names() -> None:
+    metric_names = ["v0", "v1", "v2"]
+    study = create_study(directions=["minimize", "minimize"])
+    with pytest.raises(ValueError):
+        study.set_metric_names(metric_names)

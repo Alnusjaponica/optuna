@@ -207,10 +207,10 @@ def rvs(
     b: np.ndarray,
     loc: Union[np.ndarray, float] = 0,
     scale: Union[np.ndarray, float] = 1,
-    size: int = 1,
     random_state: Optional[np.random.RandomState] = None,
 ) -> np.ndarray:
     random_state = random_state or np.random.RandomState()
+    size = np.broadcast(a, b, loc, scale).shape
     percentiles = random_state.uniform(low=0, high=1, size=size)
     return ppf(percentiles, a, b) * scale + loc
 
@@ -225,10 +225,10 @@ def logpdf(
     x = (x - loc) / scale
 
     x, a, b = np.atleast_1d(x, a, b)
-    x, a, b = np.broadcast_arrays(x, a, b)
 
     out = _norm_logpdf(x) - _log_gauss_mass(a, b)
 
+    x, a, b = np.broadcast_arrays(x, a, b)
     out[(x < a) | (b < x)] = -np.inf
     out[a == b] = math.nan
 

@@ -64,6 +64,13 @@ jobs:
       env:
         DOCKER_BUILDKIT: 1
 
+    - name: Output installed packages
+      run: |
+        docker run "${HUB_TAG}" sh -c "pip freeze --all"
+    - name: Output dependency tree
+      run: |
+        docker run "${HUB_TAG}" sh -c "pip install pipdeptree && pipdeptree"
+
     - name: Verify the built image
       run: |
         docker run "${HUB_TAG}" optuna --version

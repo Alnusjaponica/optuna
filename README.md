@@ -7,7 +7,7 @@
 [![conda](https://img.shields.io/conda/vn/conda-forge/optuna.svg)](https://anaconda.org/conda-forge/optuna)
 [![GitHub license](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/optuna/optuna)
 [![Read the Docs](https://readthedocs.org/projects/optuna/badge/?version=stable)](https://optuna.readthedocs.io/en/stable/)
-[![Codecov](https://codecov.io/gh/optuna/optuna/branch/master/graph/badge.svg)](https://codecov.io/gh/optuna/optuna/branch/master)
+[![Codecov](https://codecov.io/gh/optuna/optuna/branch/master/graph/badge.svg)](https://codecov.io/gh/optuna/optuna)
 
 [**Website**](https://optuna.org/)
 | [**Docs**](https://optuna.readthedocs.io/en/stable/)
@@ -85,7 +85,7 @@ Examples can be found in [optuna/optuna-examples](https://github.com/optuna/optu
 
 ## Integrations
 
-[Integrations modules](https://optuna.readthedocs.io/en/stable/tutorial/10_key_features/003_efficient_optimization_algorithms.html#integration-modules-for-pruning), which allow pruning, or early stopping, of unpromising trials are available for the following libraries:
+[Integrations modules](https://optuna-integration.readthedocs.io/en/stable/index.html), which allow pruning, or early stopping, of unpromising trials are available for the following libraries:
 
 * [AllenNLP](https://github.com/optuna/optuna-examples/tree/main/allennlp)
 * [Catalyst](https://github.com/optuna/optuna-examples/tree/main/pytorch/catalyst_simple.py)

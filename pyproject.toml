@@ -54,16 +54,18 @@ benchmark = [
 checking = [
     "black",
     "blackdoc",
-    "hacking",
+    "flake8",
     "isort",
     "mypy",
     "types-PyYAML",
     "types-redis",
     "types-setuptools",
+    "types-tqdm",
     "typing_extensions>=3.10.0.0",
 ]
 document = [
     "cma",
+    "botorch",
     "distributed",
     "fvcore",
     "lightgbm",
@@ -74,28 +76,24 @@ document = [
     "plotly>=4.9.0",  # optuna/visualization.
     "scikit-learn",
     "scikit-optimize",
-    # TODO(not522): Remove the constraint after sphinx_rtd_theme supports Sphinx 6
-    "sphinx<6",
+    "sphinx",
     "sphinx-copybutton",
     "sphinx-gallery",
     "sphinx-plotly-directive",
     "sphinx_rtd_theme",
-    "torch==1.11.0",
-    "torchaudio==0.11.0",
-    "torchvision==0.12.0",
+    "torch",
+    "torchaudio",
+    "torchvision",
 ]
 integration = [
-    "allennlp>=2.2.0; python_version<'3.11'",
     "botorch>=0.4.0; python_version<'3.11'",
-    "catalyst>=21.3; python_version<'3.11'",
-    "catboost>=0.26; python_version<'3.11'",
-    "chainer>=5.0.0",
+    "catboost>=0.26; sys_platform!='darwin'",
+    "catboost>=0.26,<1.2; sys_platform=='darwin'",
     "cma",
     "distributed",
     "fastai; python_version<'3.11'",
     "lightgbm; python_version<'3.11'",
-    "mlflow; python_version<'3.11'",
-    "mpi4py",
+    "mlflow",
     "mxnet; python_version<'3.11'",
     "pandas",
     "pytorch-ignite; python_version<'3.11'",
@@ -103,16 +101,15 @@ integration = [
     "scikit-learn>=0.24.2",
     "scikit-optimize; python_version<'3.11'",
     "shap; python_version<'3.11'",
-    "skorch; python_version<'3.11'",
     "tensorflow; python_version<'3.11'",
-    "tensorflow-datasets; python_version<'3.11'",
-    "torch==1.11.0; python_version<'3.11'",
-    "torchaudio==0.11.0; python_version<'3.11'",
-    "torchvision==0.12.0; python_version<'3.11'",
+    "torch; python_version<'3.11'",
+    "torchaudio; python_version<'3.11'",
+    "torchvision; python_version<'3.11'",
     "wandb",
     "xgboost",
 ]
 optional = [
+    "botorch",  # optuna/terminator/gp/botorch
     "matplotlib!=3.6.0",  # optuna/visualization/matplotlib
     "pandas",  # optuna/study.py
     "plotly>=4.9.0",  # optuna/visualization.
@@ -121,7 +118,7 @@ optional = [
     # optuna/visualization/param_importances.py.
 ]
 test = [
-    "codecov",
+    "coverage",
     "fakeredis[lua]",
     "kaleido",
     "pytest",
@@ -161,6 +158,7 @@ exclude = '''
   | \.hg
   | \.mypy_cache
   | \.venv
+  | venv
   | _build
   | buck-out
   | build
