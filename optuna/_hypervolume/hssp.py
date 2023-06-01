@@ -1,3 +1,4 @@
+import heapq
 from typing import List
 
 import numpy as np
@@ -24,25 +25,26 @@ def _solve_hssp(
     selected_vecs: List[np.ndarray] = []
     selected_indices: List[int] = []
     contributions = [
-        optuna._hypervolume.WFG().compute(np.asarray([v]), reference_point)
+        (-optuna._hypervolume.WFG().compute(np.asarray([v]), reference_point), v)
         for v in rank_i_loss_vals
     ]
+    heapq.heapify(contributions)
+
     hv_selected = 0.0
     while len(selected_indices) < subset_size:
-        max_index = int(np.argmax(contributions))
-        contributions[max_index] = -1  # mark as selected
-        selected_index = rank_i_indices[max_index]
-        selected_vec = rank_i_loss_vals[max_index]
-        for j, v in enumerate(rank_i_loss_vals):
-            if contributions[j] == -1:
-                continue
-            p = np.max([selected_vec, v], axis=0)
-            contributions[j] -= (
-                optuna._hypervolume.WFG().compute(np.asarray(selected_vecs + [p]), reference_point)
+        candidate = heapq.heappop(contributions)
+        max_value, max_index  = candidate
+        max_value = -(
+                optuna._hypervolume.WFG().compute(np.asarray(selected_vecs + [max_index]), reference_point)
                 - hv_selected
             )
-        selected_vecs += [selected_vec]
-        selected_indices += [selected_index]
-        hv_selected = optuna._hypervolume.WFG().compute(np.asarray(selected_vecs), reference_point)
+        if max_value <= contributions[0][0]:
+            selected_index = rank_i_indices[max_index]
+            selected_vec = rank_i_loss_vals[max_index]
+            selected_vecs += [selected_vec]
+            selected_indices += [selected_index]
+            hv_selected -= max_value
+        else:
+            heapq.heappush(contributions, (max_value, max_index))
 
     return np.asarray(selected_indices, dtype=int)
