@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Any
 from typing import Dict
-from typing import Union
 
 import numpy as np
 
@@ -39,7 +38,7 @@ _PRUNERS = {
 }
 
 
-Suggestion = Dict[str, Union[int, float]]
+Suggestion = Dict[str, int | float]
 ApiConfig = Dict[str, Dict[str, str]]
 
 
