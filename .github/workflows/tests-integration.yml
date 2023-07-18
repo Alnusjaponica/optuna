@@ -97,12 +97,4 @@ jobs:
     - name: Tests
       if:  ${{ github.event_name != 'schedule' && github.event_name != 'workflow_dispatch' }}
       run: |
-        if [ ${{ matrix.python-version }} == 3.11 ]; then
-          pytest tests -m "integration and not slow" \
-            --ignore tests/integration_tests/test_lightgbm.py \
-            --ignore tests/integration_tests/test_mxnet.py \
-            --ignore tests/integration_tests/test_skopt.py \
-            --ignore tests/samplers_tests/test_samplers.py
-        else
-          pytest tests -m "integration and not slow"
-        fi
+        pytest tests -m "integration and not slow"
