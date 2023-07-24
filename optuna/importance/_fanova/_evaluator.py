@@ -22,9 +22,7 @@ from optuna.trial import FrozenTrial
 class FanovaImportanceEvaluator(BaseImportanceEvaluator):
     """fANOVA importance evaluator.
 
-    Implements the fANOVA hyperparameter importance evaluation algorithm in
-    `An Efficient Approach for Assessing Hyperparameter Importance
-    <http://proceedings.mlr.press/v32/hutter14.html>`_.
+    Implements the fANOVA hyperparameter importance evaluation algorithm :cite:p:`hutter2014efficient`.
 
     fANOVA fits a random forest regression model that predicts the objective values
     of :class:`~optuna.trial.TrialState.COMPLETE` trials given their parameter configurations.
@@ -63,6 +61,7 @@ class FanovaImportanceEvaluator(BaseImportanceEvaluator):
             Controls the randomness of the forest. For deterministic behavior, specify a value
             other than :obj:`None`.
 
+    .. bibliography::
     """
 
     def __init__(
