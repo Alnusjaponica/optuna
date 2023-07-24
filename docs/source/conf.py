@@ -46,6 +46,7 @@ release = optuna.version.__version__
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 extensions = [
+    "sphinxcontrib.bibtex",
     "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
     "sphinx.ext.doctest",
@@ -223,3 +224,6 @@ plotly_html_show_source_link = False
 # Not showing common warning messages as in
 # https://sphinx-gallery.github.io/stable/configuration.html#removing-warnings.
 warnings.filterwarnings("ignore", category=ConvergenceWarning, module="sklearn")
+
+# sphinxcontrib-bibtex configuration
+bibtex_bibfiles = ["ref.bib"]
