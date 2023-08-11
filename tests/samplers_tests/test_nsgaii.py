@@ -31,10 +31,17 @@ from optuna.samplers.nsgaii import UNDXCrossover
 from optuna.samplers.nsgaii import UniformCrossover
 from optuna.samplers.nsgaii import VSBXCrossover
 from optuna.samplers.nsgaii._after_trial_strategy import NSGAIIAfterTrialStrategy
+from optuna.samplers.nsgaii._child_generation_strategy import NSGAIIChildGenerationStrategy
 from optuna.samplers.nsgaii._crossover import _inlined_categorical_uniform_crossover
-from optuna.samplers.nsgaii._sampler import _constrained_dominates
-from optuna.samplers.nsgaii._sampler import _fast_non_dominated_sort
-from optuna.samplers.nsgaii._sampler import _validate_constraints
+from optuna.samplers.nsgaii._dominates import _constrained_dominates
+from optuna.samplers.nsgaii._dominates import _validate_constraints
+from optuna.samplers.nsgaii._elite_population_selection_strategy import (
+    NSGAIIElitePopulationSelectionStrategy,
+)
+from optuna.samplers.nsgaii._elite_population_selection_strategy import _calc_crowding_distance
+from optuna.samplers.nsgaii._elite_population_selection_strategy import _crowding_distance_sort
+from optuna.samplers.nsgaii._elite_population_selection_strategy import _fast_non_dominated_sort
+from optuna.samplers.nsgaii._sampler import _GENERATION_KEY
 from optuna.study._multi_objective import _dominates
 from optuna.study._study_direction import StudyDirection
 from optuna.trial import FrozenTrial
@@ -75,9 +82,10 @@ def test_population_size() -> None:
         # Less than 2.
         NSGAIISampler(population_size=1)
 
-    with pytest.raises(TypeError):
-        # Not an integer.
-        NSGAIISampler(population_size=2.5)  # type: ignore
+    with pytest.raises(ValueError):
+        mock_crossover = MagicMock(spec=BaseCrossover)
+        mock_crossover.configure_mock(n_parents=3)
+        NSGAIISampler(population_size=2, crossover=mock_crossover)
 
 
 def test_mutation_prob() -> None:
@@ -115,6 +123,12 @@ def test_swapping_prob() -> None:
 
     with pytest.raises(ValueError):
         NSGAIISampler(swapping_prob=1.1)
+
+    with pytest.raises(ValueError):
+        UniformCrossover(swapping_prob=-0.5)
+
+    with pytest.raises(ValueError):
+        UniformCrossover(swapping_prob=1.1)
 
 
 @pytest.mark.parametrize("choices", [[-1, 0, 1], [True, False]])
@@ -485,7 +499,7 @@ def test_fast_non_dominated_sort_empty(n_dims: int) -> None:
 )
 def test_calc_crowding_distance(values: list[list[float]], expected_dist: list[float]) -> None:
     trials = [_create_frozen_trial(i, value) for i, value in enumerate(values)]
-    crowding_dist = optuna.samplers.nsgaii._sampler._calc_crowding_distance(trials)
+    crowding_dist = _calc_crowding_distance(trials)
     for i in range(len(trials)):
         assert _nan_equal(crowding_dist[i], expected_dist[i]), i
 
@@ -503,8 +517,8 @@ def test_calc_crowding_distance(values: list[list[float]], expected_dist: list[f
 def test_crowding_distance_sort(values: list[list[float]]) -> None:
     """Checks that trials are sorted by the values of `_calc_crowding_distance`."""
     trials = [_create_frozen_trial(i, value) for i, value in enumerate(values)]
-    crowding_dist = optuna.samplers.nsgaii._sampler._calc_crowding_distance(trials)
-    optuna.samplers.nsgaii._sampler._crowding_distance_sort(trials)
+    crowding_dist = _calc_crowding_distance(trials)
+    _crowding_distance_sort(trials)
     sorted_dist = [crowding_dist[t.number] for t in trials]
     assert sorted_dist == sorted(sorted_dist, reverse=True)
 
@@ -545,6 +559,16 @@ def test_constraints_func_experimental_warning() -> None:
         NSGAIISampler(constraints_func=lambda _: [0])
 
 
+def test_elite_population_selection_strategy_experimental_warning() -> None:
+    with pytest.warns(optuna.exceptions.ExperimentalWarning):
+        NSGAIISampler(elite_population_selection_strategy=lambda study, population: [])
+
+
+def test_child_generation_strategy_experimental_warning() -> None:
+    with pytest.warns(optuna.exceptions.ExperimentalWarning):
+        NSGAIISampler(child_generation_strategy=lambda study, search_space, parent_population: {})
+
+
 def test_after_trial_strategy_experimental_warning() -> None:
     with pytest.warns(optuna.exceptions.ExperimentalWarning):
         NSGAIISampler(after_trial_strategy=lambda study, trial, state, value: None)
@@ -562,6 +586,169 @@ def _create_frozen_trial(
     trial.number = number
     trial._trial_id = number
     return trial
+
+
+def test_elite_population_selection_strategy_invalid_value() -> None:
+    with pytest.raises(ValueError):
+        NSGAIIElitePopulationSelectionStrategy(population_size=1)
+
+
+@pytest.mark.parametrize(
+    "objectives, expected_elite_population",
+    [
+        (
+            [[1.0, 4.0], [2.0, 3.0], [3.0, 2.0], [4.0, 1.0]],
+            [[1.0, 4.0], [2.0, 3.0], [3.0, 2.0], [4.0, 1.0]],
+        ),
+        (
+            [[1.0, 2.0], [2.0, 1.0], [3.0, 3.0], [4.0, 4.0]],
+            [[1.0, 2.0], [2.0, 1.0], [3.0, 3.0], [4.0, 4.0]],
+        ),
+        (
+            [[1.0, 2.0], [2.0, 1.0], [5.0, 3.0], [3.0, 5.0], [4.0, 4.0]],
+            [[1.0, 2.0], [2.0, 1.0], [5.0, 3.0], [3.0, 5.0]],
+        ),
+    ],
+)
+def test_elite_population_selection_strategy_result(
+    objectives: list[list[float]],
+    expected_elite_population: list[list[float]],
+) -> None:
+    population_size = 4
+    elite_population_selection_strategy = NSGAIIElitePopulationSelectionStrategy(
+        population_size=population_size
+    )
+    study = optuna.create_study(directions=["minimize", "minimize"])
+    study.add_trials([optuna.create_trial(values=values) for values in objectives])
+    elite_population_values = [
+        trial.values for trial in elite_population_selection_strategy(study, study.get_trials())
+    ]
+    assert len(elite_population_values) == population_size
+    for values in elite_population_values:
+        assert values in expected_elite_population
+
+
+@pytest.mark.parametrize(
+    "mutation_prob,crossover,crossover_prob,swapping_prob",
+    [
+        (1.2, UniformCrossover(), 0.9, 0.5),
+        (-0.2, UniformCrossover(), 0.9, 0.5),
+        (None, UniformCrossover(), 1.2, 0.5),
+        (None, UniformCrossover(), -0.2, 0.5),
+        (None, UniformCrossover(), 0.9, 1.2),
+        (None, UniformCrossover(), 0.9, -0.2),
+        (None, 3, 0.9, 0.5),
+    ],
+)
+def test_child_generation_strategy_invalid_value(
+    mutation_prob: float,
+    crossover: BaseCrossover | int,
+    crossover_prob: float,
+    swapping_prob: float,
+) -> None:
+    with pytest.raises(ValueError):
+        NSGAIIChildGenerationStrategy(
+            mutation_prob=mutation_prob,
+            crossover=crossover,  # type: ignore[arg-type]
+            crossover_prob=crossover_prob,
+            swapping_prob=swapping_prob,
+        )
+
+
+@pytest.mark.parametrize(
+    "mutation_prob,child_params",
+    [(0.0, {"x": 1.0, "y": 0.0}), (1.0, {})],
+)
+def test_child_generation_strategy_mutation_prob(
+    mutation_prob: int, child_params: dict[str, float]
+) -> None:
+    child_generation_strategy = NSGAIIChildGenerationStrategy(
+        crossover_prob=0.0,
+        crossover=UniformCrossover(),
+        mutation_prob=mutation_prob,
+        swapping_prob=0.5,
+        seed=1,
+    )
+    study = MagicMock(spec=optuna.study.Study)
+    search_space = MagicMock(spec=dict)
+    search_space.keys.return_value = ["x", "y"]
+    parent_population = [
+        optuna.trial.create_trial(
+            params={"x": 1.0, "y": 0},
+            distributions={
+                "x": FloatDistribution(0, 10),
+                "y": CategoricalDistribution([-1, 0, 1]),
+            },
+            value=5.0,
+        )
+    ]
+    assert child_generation_strategy(study, search_space, parent_population) == child_params
+
+
+def test_child_generation_strategy_generation_key() -> None:
+    n_params = 2
+
+    def objective(trial: optuna.Trial) -> list[float]:
+        xs = [trial.suggest_float(f"x{dim}", -10, 10) for dim in range(n_params)]
+        return xs
+
+    mock_func = MagicMock(spec=Callable, return_value={"x0": 0.0, "x1": 1.1})
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", optuna.exceptions.ExperimentalWarning)
+        study = optuna.create_study(
+            sampler=NSGAIISampler(population_size=2, child_generation_strategy=mock_func),
+            directions=["minimize", "minimize"],
+        )
+    study.optimize(objective, n_trials=3)
+    assert mock_func.call_count == 1
+    for i, trial in enumerate(study.get_trials()):
+        if i < 2:
+            assert trial.system_attrs[_GENERATION_KEY] == 0
+        elif i == 2:
+            assert trial.system_attrs[_GENERATION_KEY] == 1
+
+
+@patch(
+    "optuna.samplers.nsgaii._child_generation_strategy.perform_crossover",
+    return_value={"x": 3.0, "y": 2.0},
+)
+def test_child_generation_strategy_crossover_prob(mock_func: MagicMock) -> None:
+    study = MagicMock(spec=optuna.study.Study)
+    search_space = MagicMock(spec=dict)
+    search_space.keys.return_value = ["x", "y"]
+    parent_population = [
+        optuna.trial.create_trial(
+            params={"x": 1.0, "y": 0},
+            distributions={
+                "x": FloatDistribution(0, 10),
+                "y": CategoricalDistribution([-1, 0, 1]),
+            },
+            value=5.0,
+        )
+    ]
+    child_generation_strategy_always_not_crossover = NSGAIIChildGenerationStrategy(
+        crossover_prob=0.0,
+        crossover=UniformCrossover(),
+        mutation_prob=None,
+        swapping_prob=0.5,
+        seed=1,
+    )
+    assert child_generation_strategy_always_not_crossover(
+        study, search_space, parent_population
+    ) == {"x": 1.0}
+    assert mock_func.call_count == 0
+
+    child_generation_strategy_always_crossover = NSGAIIChildGenerationStrategy(
+        crossover_prob=1.0,
+        crossover=UniformCrossover(),
+        mutation_prob=0.0,
+        swapping_prob=0.5,
+    )
+    assert child_generation_strategy_always_crossover(study, search_space, parent_population) == {
+        "x": 3.0,
+        "y": 2.0,
+    }
+    assert mock_func.call_count == 1
 
 
 def test_call_after_trial_of_random_sampler() -> None:
@@ -781,7 +968,7 @@ def test_crossover_deterministic(
     def _normal(*args: Any, **kwargs: Any) -> Any:
         if kwargs.get("size") is None:
             return rand_value
-        return np.full(kwargs.get("size"), rand_value)  # type: ignore
+        return np.full(kwargs.get("size"), rand_value)  # type: ignore[arg-type]
 
     rng = Mock()
     rng.rand = Mock(side_effect=_rand)
