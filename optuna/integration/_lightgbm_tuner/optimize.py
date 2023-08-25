@@ -79,16 +79,18 @@ class _BaseTuner:
 
         # todo (smly): This implementation is different logic from the LightGBM's python bindings.
         if type(metric) is str:
-            pass
-        elif type(metric) is list:
-            metric = metric[-1]
-        elif type(metric) is set:
-            metric = list(metric)[-1]
-        else:
-            raise NotImplementedError
-        metric = self._metric_with_eval_at(metric)
+            return self._metric_with_eval_at(metric)
 
-        return metric
+        elif type(metric) is list or type(metric) is set:
+            warnings.warn(
+                "The metric is expected to be a string since LightGBMTuner and LightGBMTunerCV "
+                "does not support multi-objective optimization. Only the last metric ({}) is used "
+                "for optimization.".format(list(metric)[-1]),
+                UserWarning,
+            )
+            self._metric_with_eval_at(list(metric)[-1])
+
+        raise NotImplementedError
 
     def _get_booster_best_score(self, booster: "lgb.Booster") -> float:
         metric = self._get_metric_for_objective()
@@ -749,6 +751,11 @@ class LightGBMTuner(_LightGBMBaseTuner):
     .. _lightgbm.train(): https://lightgbm.readthedocs.io/en/latest/pythonapi/lightgbm.train.html
     .. _LightGBM's verbosity: https://lightgbm.readthedocs.io/en/latest/Parameters.html#verbosity
     .. _deterministic: https://lightgbm.readthedocs.io/en/latest/Parameters.html#deterministic
+
+    ..note::
+        Currently :class:`~optuna.integration.LightGBMTuner` does not support multi-objective
+        optimization. If you pass multiple metrics to ``metric`` parameter in ``params``,
+        the last metric in the container will be used.
     """
 
     def __init__(
@@ -934,6 +941,11 @@ class LightGBMTunerCV(_LightGBMBaseTuner):
     .. _lightgbm.cv(): https://lightgbm.readthedocs.io/en/latest/pythonapi/lightgbm.cv.html
     .. _LightGBM's verbosity: https://lightgbm.readthedocs.io/en/latest/Parameters.html#verbosity
     .. _deterministic: https://lightgbm.readthedocs.io/en/latest/Parameters.html#deterministic
+
+    ..note::
+        Currently :class:`~optuna.integration.LightGBMTuner` does not support multi-objective
+        optimization. If you pass multiple metrics to ``metric`` parameter in ``params``,
+        the last metric in the container will be used.
     """
 
     def __init__(
