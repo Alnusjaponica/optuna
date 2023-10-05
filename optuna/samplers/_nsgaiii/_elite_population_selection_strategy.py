@@ -91,7 +91,7 @@ class NSGAIIIElitePopulationSelectionStrategy:
                     population,
                     closest_reference_points,
                     distance_reference_points,
-                    self._rng,
+                    self._rng.rng,
                 )
                 elite_population.extend(additional_elite_population)
                 break
