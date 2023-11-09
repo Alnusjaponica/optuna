@@ -1,3 +1,4 @@
+from __future__ import annotations
 from logging import DEBUG
 from logging import INFO
 from logging import WARNING
@@ -6,7 +7,6 @@ from numbers import Number
 from time import time
 from typing import Any
 from typing import Callable
-from typing import Dict
 from typing import Iterable
 from typing import List
 from typing import Mapping
@@ -59,8 +59,8 @@ _logger = logging.get_logger(__name__)
 
 
 def _check_fit_params(
-    X: TwoDimArrayLikeType, fit_params: Dict, indices: OneDimArrayLikeType
-) -> Dict:
+    X: TwoDimArrayLikeType, fit_params: dict, indices: OneDimArrayLikeType
+) -> dict:
     fit_params_validated = {}
     for key, value in fit_params.items():
         # NOTE Original implementation:
@@ -188,7 +188,7 @@ class _Objective:
         cv: "BaseCrossValidator",
         enable_pruning: bool,
         error_score: Union[Number, float, str],
-        fit_params: Dict[str, Any],
+        fit_params: dict[str, Any],
         groups: Optional[OneDimArrayLikeType],
         max_iter: int,
         return_train_score: bool,
@@ -296,7 +296,7 @@ class _Objective:
 
         return scores
 
-    def _get_params(self, trial: Trial) -> Dict[str, Any]:
+    def _get_params(self, trial: Trial) -> dict[str, Any]:
         return {
             name: trial._suggest(name, distribution)
             for name, distribution in self.param_distributions.items()
@@ -305,10 +305,10 @@ class _Objective:
     def _partial_fit_and_score(
         self,
         estimator: "sklearn.base.BaseEstimator",
-        train: List[int],
-        test: List[int],
-        partial_fit_params: Dict[str, Any],
-    ) -> List[Number]:
+        train: list[int],
+        test: list[int],
+        partial_fit_params: dict[str, Any],
+    ) -> list[Number]:
         X_train, y_train = _safe_split(estimator, self.X, self.y, train)
         X_test, y_test = _safe_split(estimator, self.X, self.y, test, train_indices=train)
 
@@ -537,7 +537,7 @@ class OptunaSearchCV(BaseEstimator):
         return self.best_trial_.number
 
     @property
-    def best_params_(self) -> Dict[str, Any]:
+    def best_params_(self) -> dict[str, Any]:
         """Parameters of the best trial in the :class:`~optuna.study.Study`."""
 
         self._check_is_fitted()
@@ -569,7 +569,7 @@ class OptunaSearchCV(BaseEstimator):
         return self.best_estimator_.classes_
 
     @property
-    def cv_results_(self) -> Dict[str, Any]:
+    def cv_results_(self) -> dict[str, Any]:
         """A dictionary mapping a metric name to a list of
         Cross-Validation results of all trials."""
         cv_results_dict_in_list = [trial_.user_attrs for trial_ in self.trials_]
@@ -589,7 +589,7 @@ class OptunaSearchCV(BaseEstimator):
         return len(self.trials_)
 
     @property
-    def trials_(self) -> List[FrozenTrial]:
+    def trials_(self) -> list[FrozenTrial]:
         """All trials in the :class:`~optuna.study.Study`."""
 
         self._check_is_fitted()
@@ -597,7 +597,7 @@ class OptunaSearchCV(BaseEstimator):
         return self.study_.trials
 
     @property
-    def user_attrs_(self) -> Dict[str, Any]:
+    def user_attrs_(self) -> dict[str, Any]:
         """User attributes in the :class:`~optuna.study.Study`."""
 
         self._check_is_fitted()
@@ -714,7 +714,7 @@ class OptunaSearchCV(BaseEstimator):
         error_score: Union[Number, float, str] = np.nan,
         max_iter: int = 1000,
         n_jobs: Optional[int] = None,
-        n_trials: int = 10,
+        n_trials: int | None = 10,
         random_state: Optional[Union[int, np.random.RandomState]] = None,
         refit: bool = True,
         return_train_score: bool = False,
@@ -723,7 +723,7 @@ class OptunaSearchCV(BaseEstimator):
         subsample: Union[float, int] = 1.0,
         timeout: Optional[float] = None,
         verbose: int = 0,
-        callbacks: Optional[List[Callable[[study_module.Study, FrozenTrial], None]]] = None,
+        callbacks: Optional[list[Callable[[study_module.Study, FrozenTrial], None]]] = None,
     ) -> None:
         _imports.check()
 
@@ -784,7 +784,7 @@ class OptunaSearchCV(BaseEstimator):
         if self.study is not None and self.study.direction != StudyDirection.MAXIMIZE:
             raise ValueError("direction of study must be 'maximize'.")
 
-    def _more_tags(self) -> Dict[str, bool]:
+    def _more_tags(self) -> dict[str, bool]:
         return {"non_deterministic": True, "no_validation": True}
 
     def _refit(
