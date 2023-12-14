@@ -11,9 +11,12 @@ import numpy as np
 from optuna.samplers._lazy_random_state import LazyRandomState
 from optuna.samplers.nsgaii._dominates import _constrained_dominates
 from optuna.samplers.nsgaii._dominates import _validate_constraints
-from optuna.samplers.nsgaii._elite_population_selection_strategy import _fast_non_dominated_sort
+from optuna.samplers.nsgaii._elite_population_selection_strategy import (
+    _constrained_fast_non_dominated_sort,
+)
 from optuna.study import Study
-from optuna.study._multi_objective import _dominates
+from optuna.study import StudyDirection
+from optuna.study._multi_objective import _fast_non_dominated_sort
 from optuna.trial import FrozenTrial
 
 
@@ -54,8 +57,21 @@ class NSGAIIIElitePopulationSelectionStrategy:
         """
         _validate_constraints(population, self._constraints_func)
 
-        dominates = _dominates if self._constraints_func is None else _constrained_dominates
-        population_per_rank = _fast_non_dominated_sort(population, study.directions, dominates)
+        if self._constraints_func is None:
+            objective_values = np.array([trial.values for trial in population]) * np.array(
+                [-1.0 if d == StudyDirection.MAXIMIZE else 1.0 for d in study.directions]
+            )
+            domination_ranks = _fast_non_dominated_sort(objective_values)
+            population_per_rank: list[list[FrozenTrial]] = [
+                [] for _ in range(max(domination_ranks) + 1)
+            ]
+            for trial, rank in zip(population, domination_ranks):
+                population_per_rank[rank].append(trial)
+        else:
+            population_per_rank = _constrained_fast_non_dominated_sort(
+                population, study.directions, _constrained_dominates
+            )
+
         elite_population: list[FrozenTrial] = []
         for population in population_per_rank:
             if len(elite_population) + len(population) < self._population_size:
