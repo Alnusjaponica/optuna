@@ -1,6 +1,11 @@
+from __future__ import annotations
+
+from collections import defaultdict
 from typing import List
 from typing import Optional
 from typing import Sequence
+
+import numpy as np
 
 import optuna
 from optuna.study._study_direction import StudyDirection
@@ -67,6 +72,42 @@ def _get_pareto_front_trials_by_trials(
 
 def _get_pareto_front_trials(study: "optuna.study.Study") -> List[FrozenTrial]:
     return _get_pareto_front_trials_by_trials(study.trials, study.directions)
+
+
+def _fast_non_dominated_sort(
+    objective_values: np.ndarray,
+    *,
+    n_below: int | None = None,
+) -> np.ndarray:
+    # Calculate the domination matrix.
+    # The resulting matrix `domination_matrix` is a boolean matrix where
+    # `domination_matrix[i, j] == True` means that the i-th trial dominates the j-th trial in the
+    # given multi objective minimization problem.
+    domination_mat = np.all(
+        objective_values[:, np.newaxis, :] >= objective_values[np.newaxis, :, :], axis=2
+    ) & np.any(objective_values[:, np.newaxis, :] > objective_values[np.newaxis, :, :], axis=2)
+    domination_list = np.nonzero(domination_mat)
+    domination_map = defaultdict(list)
+    for dominated_idx, dominating_idx in zip(*domination_list):
+        domination_map[dominating_idx].append(dominated_idx)
+
+    ranks = np.full(len(objective_values), -1)
+    dominated_count = np.sum(domination_mat, axis=1)
+
+    rank = -1
+    n_below = n_below or len(objective_values) - 1
+    while np.sum(ranks != -1) < n_below:
+        # Find the non-dominated trials and assign the rank.
+        (non_dominated_idxs,) = np.nonzero(dominated_count == 0)
+        rank += 1
+        ranks[non_dominated_idxs] = rank
+
+        # Update the dominated count.
+        dominated_count[non_dominated_idxs] = -1
+        for non_dominated_idx in non_dominated_idxs:
+            dominated_count[domination_map[non_dominated_idx]] -= 1
+
+    return ranks
 
 
 def _dominates(
