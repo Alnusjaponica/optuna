@@ -661,7 +661,7 @@ def _split_complete_trials_multi_objective(
         # The type of trials must be `list`, but not `Sequence`.
         return [], list(trials)
 
-    lvals = np.asarray([trial.values for trial in trials])
+    lvals = np.array([trial.values for trial in trials])
     lvals *= np.array([-1.0 if d == StudyDirection.MAXIMIZE else 1.0 for d in study.directions])
 
     # Solving HSSP for variables number of times is a waste of time.
