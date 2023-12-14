@@ -590,21 +590,6 @@ class TPESampler(BaseSampler):
         self._random_sampler.after_trial(study, trial, state, values)
 
 
-def _calculate_nondomination_rank(loss_vals: np.ndarray, n_below: int) -> np.ndarray:
-    ranks = np.full(len(loss_vals), -1)
-    num_ranked = 0
-    rank = 0
-    domination_mat = np.all(loss_vals[:, None, :] >= loss_vals[None, :, :], axis=2) & np.any(
-        loss_vals[:, None, :] > loss_vals[None, :, :], axis=2
-    )
-    while num_ranked < n_below:
-        counts = np.sum((ranks == -1)[None, :] & domination_mat, axis=1)
-        num_ranked += np.sum((counts == 0) & (ranks == -1))
-        ranks[(counts == 0) & (ranks == -1)] = rank
-        rank += 1
-    return ranks
-
-
 def _split_trials(
     study: Study,
     trials: list[FrozenTrial],
