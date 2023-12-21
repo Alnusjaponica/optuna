@@ -95,10 +95,12 @@ def _fast_non_dominated_sort(
     dominated_count = np.sum(domination_mat, axis=1)
 
     rank = -1
+    ranked_idx_num = 0
     n_below = n_below or len(objective_values) - 1
-    while np.sum(ranks != -1) < n_below:
+    while ranked_idx_num < n_below:
         # Find the non-dominated trials and assign the rank.
         (non_dominated_idxs,) = np.nonzero(dominated_count == 0)
+        ranked_idx_num += len(non_dominated_idxs)
         rank += 1
         ranks[non_dominated_idxs] = rank
 
