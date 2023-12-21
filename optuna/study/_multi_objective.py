@@ -83,16 +83,18 @@ def _fast_non_dominated_sort(
     if penalty is None:
         penalty = np.zeros_like(objective_values[:, 0])
 
-    objective_values = np.hstack([objective_values, np.array(penalty)[:, np.newaxis]])
     # Calculate the domination matrix.
     # The resulting matrix `domination_matrix` is a boolean matrix where
-    # `domination_matrix[i, j] == True` means that the i-th trial dominates the j-th trial in the
+    # `domination_matrix[i, j] == True` means that the j-th trial dominates the i-th trial in the
     # given multi objective minimization problem.
-    domination_mat = (
-        np.all(objective_values[:, np.newaxis, :] >= objective_values[np.newaxis, :, :], axis=2)
-        & np.any(objective_values[:, np.newaxis, :] > objective_values[np.newaxis, :, :], axis=2)
-        & (penalty[:, np.newaxis] <= penalty)
-    )
+    domination_mat = np.all(
+        objective_values[:, np.newaxis, :] >= objective_values[np.newaxis, :, :], axis=2
+    ) & np.any(objective_values[:, np.newaxis, :] > objective_values[np.newaxis, :, :], axis=2)
+
+    # Filter the domination relations by the penalty on the constraints.
+    domination_mat |= penalty[:, np.newaxis] > penalty
+    domination_mat &= penalty[:, np.newaxis] >= penalty
+
     domination_list = np.nonzero(domination_mat)
     domination_map = defaultdict(list)
     for dominated_idx, dominating_idx in zip(*domination_list):
@@ -103,7 +105,7 @@ def _fast_non_dominated_sort(
 
     rank = -1
     ranked_idx_num = 0
-    n_below = n_below or len(objective_values) - 1
+    n_below = n_below or len(objective_values)
     while ranked_idx_num < n_below:
         # Find the non-dominated trials and assign the rank.
         (non_dominated_idxs,) = np.nonzero(dominated_count == 0)
@@ -115,7 +117,7 @@ def _fast_non_dominated_sort(
         dominated_count[non_dominated_idxs] = -1
         for non_dominated_idx in non_dominated_idxs:
             dominated_count[domination_map[non_dominated_idx]] -= 1
-
+    print(f"{ranks=}")
     return ranks
 
 

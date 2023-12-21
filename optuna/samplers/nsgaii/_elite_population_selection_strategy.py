@@ -39,18 +39,13 @@ class NSGAIIElitePopulationSelectionStrategy:
         Returns:
             A list of trials that are selected as elite population.
         """
-        _validate_constraints(population, self._constraints_func)
-        penalty = _evaluate_penalty(population) if self._constraints_func is not None else None
+        _validate_constraints(population, is_constrained=self._constraints_func is not None)
 
-        objective_values = np.array([trial.values for trial in population]) * np.array(
-            [-1.0 if d == StudyDirection.MAXIMIZE else 1.0 for d in study.directions]
+        population_per_rank = _rank_population(
+            population,
+            study.directions,
+            is_constrained=self._constraints_func is not None,
         )
-        domination_ranks = _fast_non_dominated_sort(objective_values, penalty=penalty)
-        population_per_rank: list[list[FrozenTrial]] = [
-            [] for _ in range(max(domination_ranks) + 1)
-        ]
-        for trial, rank in zip(population, domination_ranks):
-            population_per_rank[rank].append(trial)
 
         elite_population: list[FrozenTrial] = []
         for individuals in population_per_rank:
@@ -63,6 +58,35 @@ class NSGAIIElitePopulationSelectionStrategy:
                 break
 
         return elite_population
+
+
+def _rank_population(
+    population: list[FrozenTrial],
+    directions: Sequence[StudyDirection],
+    *,
+    is_constrained: bool = False,
+) -> list[list[FrozenTrial]]:
+    if len(population) == 0:
+        return []
+
+    objective_values = np.array(
+        [
+            trial.values if trial.values else [float("inf")] * len(directions)
+            for trial in population
+        ],
+        dtype=np.float64,
+    )
+    objective_values *= np.array(
+        [-1.0 if d == StudyDirection.MAXIMIZE else 1.0 for d in directions]
+    )
+    penalty = _evaluate_penalty(population) if is_constrained else None
+
+    domination_ranks = _fast_non_dominated_sort(objective_values, penalty=penalty)
+    population_per_rank: list[list[FrozenTrial]] = [[] for _ in range(max(domination_ranks) + 1)]
+    for trial, rank in zip(population, domination_ranks):
+        population_per_rank[rank].append(trial)
+
+    return population_per_rank
 
 
 def _calc_crowding_distance(population: list[FrozenTrial]) -> defaultdict[int, float]:

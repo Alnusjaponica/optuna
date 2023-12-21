@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Callable
 from collections.abc import Sequence
 import warnings
 
@@ -15,12 +14,14 @@ from optuna.trial import TrialState
 
 def _validate_constraints(
     population: list[FrozenTrial],
-    constraints_func: Callable[[FrozenTrial], Sequence[float]] | None = None,
+    *,
+    is_constrained: bool = False,
 ) -> None:
-    if constraints_func is None:
+    if not is_constrained:
         return
     assert len(population) > 0
-    num_constraints = len(population[0].system_attrs[_CONSTRAINTS_KEY])
+
+    num_constraints = None
     for _trial in population:
         _constraints = _trial.system_attrs.get(_CONSTRAINTS_KEY)
         if _constraints is None:
@@ -28,7 +29,10 @@ def _validate_constraints(
                 f"Trial {_trial.number} does not have constraint values."
                 " It will be dominated by the other trials."
             )
-        elif np.any(np.isnan(np.array(_constraints))):
+            continue
+        # Initialize num_constraints with the number of constraints of the first trial with values.
+        num_constraints = len(_constraints) if num_constraints is None else num_constraints
+        if np.any(np.isnan(np.array(_constraints))):
             raise ValueError("NaN is not acceptable as constraint value.")
         elif len(_constraints) != num_constraints:
             raise ValueError("Trials with different numbers of constraints cannot be compared.")
@@ -44,13 +48,12 @@ def _evaluate_penalty(population: Sequence[FrozenTrial]) -> np.ndarray:
 
     penalty: list[float] = []
     for trial in population:
-        constraints = trial.system_attrs[_CONSTRAINTS_KEY]
+        constraints = trial.system_attrs.get(_CONSTRAINTS_KEY)
         if constraints is None:
             penalty.append(float("inf"))
         else:
             assert isinstance(constraints, (list, tuple))
             penalty.append(sum(v for v in constraints if v > 0))
-
     return np.array(penalty)
 
 

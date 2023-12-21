@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Callable
 from collections.abc import Sequence
+import itertools
 from typing import Any
 from unittest.mock import MagicMock
 from unittest.mock import Mock
@@ -32,12 +33,14 @@ from optuna.samplers.nsgaii import VSBXCrossover
 from optuna.samplers.nsgaii._after_trial_strategy import NSGAIIAfterTrialStrategy
 from optuna.samplers.nsgaii._child_generation_strategy import NSGAIIChildGenerationStrategy
 from optuna.samplers.nsgaii._constraints_evaluation import _constrained_dominates
+from optuna.samplers.nsgaii._constraints_evaluation import _validate_constraints
 from optuna.samplers.nsgaii._crossover import _inlined_categorical_uniform_crossover
 from optuna.samplers.nsgaii._elite_population_selection_strategy import (
     NSGAIIElitePopulationSelectionStrategy,
 )
 from optuna.samplers.nsgaii._elite_population_selection_strategy import _calc_crowding_distance
 from optuna.samplers.nsgaii._elite_population_selection_strategy import _crowding_distance_sort
+from optuna.samplers.nsgaii._elite_population_selection_strategy import _rank_population
 from optuna.samplers.nsgaii._sampler import _GENERATION_KEY
 from optuna.study._multi_objective import _dominates
 from optuna.study._study_direction import StudyDirection
@@ -530,6 +533,89 @@ def test_elite_population_selection_strategy_result(
         assert values in expected_elite_population
 
 
+@pytest.mark.parametrize("direction1", [StudyDirection.MINIMIZE, StudyDirection.MAXIMIZE])
+@pytest.mark.parametrize("direction2", [StudyDirection.MINIMIZE, StudyDirection.MAXIMIZE])
+def test_fast_non_dominated_sort_no_constraints(
+    direction1: StudyDirection, direction2: StudyDirection
+) -> None:
+    directions = [direction1, direction2]
+    value_list = [10, 20, 20, 30, float("inf"), float("inf"), -float("inf")]
+    values = [[v1, v2] for v1 in value_list for v2 in value_list]
+    trials = [_create_frozen_trial(number=i, values=v) for i, v in enumerate(values)]
+
+    population_per_rank = _rank_population(trials, directions)
+    _assert_population_per_rank(trials, directions, population_per_rank)
+
+
+def test_fast_non_dominated_sort_with_constraints() -> None:
+    value_list = [10, 20, 20, 30, float("inf"), float("inf"), -float("inf")]
+    values = [[v1, v2] for v1 in value_list for v2 in value_list]
+
+    constraint_list = [-float("inf"), -2, 0, 1, 2, 3, float("inf")]
+    constraints = [[c1, c2] for c1 in constraint_list for c2 in constraint_list]
+
+    trials = [
+        _create_frozen_trial(number=i, values=v, constraints=c)
+        for i, (v, c) in enumerate(itertools.product(values, constraints))
+    ]
+    directions = [StudyDirection.MINIMIZE, StudyDirection.MAXIMIZE]
+    population_per_rank = _rank_population(trials, directions, is_constrained=True)
+    _assert_population_per_rank(trials, directions, population_per_rank)
+
+
+def test_validate_constraints() -> None:
+    with pytest.raises(ValueError):
+        _validate_constraints(
+            [_create_frozen_trial(number=0, values=[1], constraints=[0, float("nan")])],
+            is_constrained=True,
+        )
+
+
+@pytest.mark.parametrize(
+    "values_and_constraints",
+    [
+        [([10], None), ([20], None), ([20], [0]), ([20], [1]), ([30], [-1])],
+        [
+            ([50, 30], None),
+            ([30, 50], None),
+            ([20, 20], [3, 3]),
+            ([30, 10], [0, -1]),
+            ([15, 15], [4, 4]),
+        ],
+    ],
+)
+def test_fast_non_dominated_sort_missing_constraint_values(
+    values_and_constraints: list[tuple[list[float], list[float]]]
+) -> None:
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", optuna.exceptions.ExperimentalWarning)
+
+    values_dim = len(values_and_constraints[0][0])
+    for directions in itertools.product(
+        [StudyDirection.MINIMIZE, StudyDirection.MAXIMIZE], repeat=values_dim
+    ):
+        trials = [
+            _create_frozen_trial(number=i, values=v, constraints=c)
+            for i, (v, c) in enumerate(values_and_constraints)
+        ]
+
+        with pytest.warns(UserWarning):
+            _validate_constraints(trials, is_constrained=True)
+
+        population_per_rank = _rank_population(trials, list(directions), is_constrained=True)
+        _assert_population_per_rank(trials, list(directions), population_per_rank)
+
+
+@pytest.mark.parametrize("n_dims", [1, 2, 3])
+def test_fast_non_dominated_sort_empty(n_dims: int) -> None:
+    for directions in itertools.product(
+        [StudyDirection.MINIMIZE, StudyDirection.MAXIMIZE], repeat=n_dims
+    ):
+        trials: list[FrozenTrial] = []
+        population_per_rank = _rank_population(trials, list(directions))
+        assert population_per_rank == []
+
+
 @pytest.mark.parametrize(
     "mutation_prob,crossover,crossover_prob,swapping_prob",
     [
@@ -877,6 +963,12 @@ def test_crossover_deterministic(
     rng = Mock()
     rng.rand = Mock(side_effect=_rand)
     rng.normal = Mock(side_effect=_normal)
+    child_params = crossover.crossover(parent_params, rng, study, numerical_transform.bounds)
+    np.testing.assert_almost_equal(child_params, expected_params)
+    child_params = crossover.crossover(parent_params, rng, study, numerical_transform.bounds)
+    np.testing.assert_almost_equal(child_params, expected_params)
+    child_params = crossover.crossover(parent_params, rng, study, numerical_transform.bounds)
+    np.testing.assert_almost_equal(child_params, expected_params)
     child_params = crossover.crossover(parent_params, rng, study, numerical_transform.bounds)
     np.testing.assert_almost_equal(child_params, expected_params)
     child_params = crossover.crossover(parent_params, rng, study, numerical_transform.bounds)

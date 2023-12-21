@@ -52,7 +52,7 @@ class NSGAIIIElitePopulationSelectionStrategy:
         Returns:
             A list of trials that are selected as elite population.
         """
-        _validate_constraints(population, self._constraints_func)
+        _validate_constraints(population, is_constrained=self._constraints_func is not None)
 
         penalty = _evaluate_penalty(population) if self._constraints_func is not None else None
 
