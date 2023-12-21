@@ -92,9 +92,16 @@ def _validate_constraints(
 ) -> None:
     if constraints_func is None:
         return
+    assert len(population) > 0
+    num_constraints = len(population[0].system_attrs[_CONSTRAINTS_KEY])
     for _trial in population:
         _constraints = _trial.system_attrs.get(_CONSTRAINTS_KEY)
         if _constraints is None:
-            continue
-        if np.any(np.isnan(np.array(_constraints))):
+            warnings.warn(
+                f"Trial {_trial.number} does not have constraint values."
+                " It will be dominated by the other trials."
+            )
+        elif np.any(np.isnan(np.array(_constraints))):
             raise ValueError("NaN is not acceptable as constraint value.")
+        elif len(_constraints) != num_constraints:
+            raise ValueError("Trials with different numbers of constraints cannot be compared.")
