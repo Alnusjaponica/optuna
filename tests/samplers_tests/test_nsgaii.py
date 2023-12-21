@@ -33,9 +33,9 @@ from optuna.samplers.nsgaii import UniformCrossover
 from optuna.samplers.nsgaii import VSBXCrossover
 from optuna.samplers.nsgaii._after_trial_strategy import NSGAIIAfterTrialStrategy
 from optuna.samplers.nsgaii._child_generation_strategy import NSGAIIChildGenerationStrategy
+from optuna.samplers.nsgaii._constraints_evaluation import _constrained_dominates
+from optuna.samplers.nsgaii._constraints_evaluation import _validate_constraints
 from optuna.samplers.nsgaii._crossover import _inlined_categorical_uniform_crossover
-from optuna.samplers.nsgaii._dominates import _constrained_dominates
-from optuna.samplers.nsgaii._dominates import _validate_constraints
 from optuna.samplers.nsgaii._elite_population_selection_strategy import (
     _constrained_fast_non_dominated_sort,
 )
@@ -970,5 +970,9 @@ def test_crossover_deterministic(
     rng = Mock()
     rng.rand = Mock(side_effect=_rand)
     rng.normal = Mock(side_effect=_normal)
+    child_params = crossover.crossover(parent_params, rng, study, numerical_transform.bounds)
+    np.testing.assert_almost_equal(child_params, expected_params)
+    child_params = crossover.crossover(parent_params, rng, study, numerical_transform.bounds)
+    np.testing.assert_almost_equal(child_params, expected_params)
     child_params = crossover.crossover(parent_params, rng, study, numerical_transform.bounds)
     np.testing.assert_almost_equal(child_params, expected_params)

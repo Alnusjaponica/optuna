@@ -9,8 +9,8 @@ import math
 import numpy as np
 
 from optuna.samplers._lazy_random_state import LazyRandomState
-from optuna.samplers.nsgaii._dominates import _evaluate_penalty
-from optuna.samplers.nsgaii._dominates import _validate_constraints
+from optuna.samplers.nsgaii._constraints_evaluation import _evaluate_penalty
+from optuna.samplers.nsgaii._constraints_evaluation import _validate_constraints
 from optuna.study import Study
 from optuna.study import StudyDirection
 from optuna.study._multi_objective import _fast_non_dominated_sort
