@@ -77,15 +77,22 @@ def _get_pareto_front_trials(study: "optuna.study.Study") -> List[FrozenTrial]:
 def _fast_non_dominated_sort(
     objective_values: np.ndarray,
     *,
+    penalty: np.ndarray | None = None,
     n_below: int | None = None,
 ) -> np.ndarray:
+    if penalty is None:
+        penalty = np.zeros_like(objective_values[:, 0])
+
+    objective_values = np.hstack([objective_values, np.array(penalty)[:, np.newaxis]])
     # Calculate the domination matrix.
     # The resulting matrix `domination_matrix` is a boolean matrix where
     # `domination_matrix[i, j] == True` means that the i-th trial dominates the j-th trial in the
     # given multi objective minimization problem.
-    domination_mat = np.all(
-        objective_values[:, np.newaxis, :] >= objective_values[np.newaxis, :, :], axis=2
-    ) & np.any(objective_values[:, np.newaxis, :] > objective_values[np.newaxis, :, :], axis=2)
+    domination_mat = (
+        np.all(objective_values[:, np.newaxis, :] >= objective_values[np.newaxis, :, :], axis=2)
+        & np.any(objective_values[:, np.newaxis, :] > objective_values[np.newaxis, :, :], axis=2)
+        & (penalty[:, np.newaxis] <= penalty)
+    )
     domination_list = np.nonzero(domination_mat)
     domination_map = defaultdict(list)
     for dominated_idx, dominating_idx in zip(*domination_list):
