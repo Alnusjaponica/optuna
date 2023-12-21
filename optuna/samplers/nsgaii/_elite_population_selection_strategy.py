@@ -3,13 +3,14 @@ from __future__ import annotations
 from collections import defaultdict
 from collections.abc import Callable
 from collections.abc import Sequence
-import itertools
 
-import optuna
-from optuna.samplers.nsgaii._dominates import _constrained_dominates
-from optuna.samplers.nsgaii._dominates import _validate_constraints
+import numpy as np
+
+from optuna.samplers.nsgaii._constraints_evaluation import _evaluate_penalty
+from optuna.samplers.nsgaii._constraints_evaluation import _validate_constraints
 from optuna.study import Study
-from optuna.study._multi_objective import _dominates
+from optuna.study import StudyDirection
+from optuna.study._multi_objective import _fast_non_dominated_sort
 from optuna.trial import FrozenTrial
 
 
@@ -38,9 +39,13 @@ class NSGAIIElitePopulationSelectionStrategy:
         Returns:
             A list of trials that are selected as elite population.
         """
-        _validate_constraints(population, self._constraints_func)
-        dominates = _dominates if self._constraints_func is None else _constrained_dominates
-        population_per_rank = _fast_non_dominated_sort(population, study.directions, dominates)
+        _validate_constraints(population, is_constrained=self._constraints_func is not None)
+
+        population_per_rank = _rank_population(
+            population,
+            study.directions,
+            is_constrained=self._constraints_func is not None,
+        )
 
         elite_population: list[FrozenTrial] = []
         for individuals in population_per_rank:
@@ -53,6 +58,35 @@ class NSGAIIElitePopulationSelectionStrategy:
                 break
 
         return elite_population
+
+
+def _rank_population(
+    population: list[FrozenTrial],
+    directions: Sequence[StudyDirection],
+    *,
+    is_constrained: bool = False,
+) -> list[list[FrozenTrial]]:
+    if len(population) == 0:
+        return []
+
+    objective_values = np.array(
+        [
+            trial.values if trial.values else [float("inf")] * len(directions)
+            for trial in population
+        ],
+        dtype=np.float64,
+    )
+    objective_values *= np.array(
+        [-1.0 if d == StudyDirection.MAXIMIZE else 1.0 for d in directions]
+    )
+    penalty = _evaluate_penalty(population) if is_constrained else None
+
+    domination_ranks = _fast_non_dominated_sort(objective_values, penalty=penalty)
+    population_per_rank: list[list[FrozenTrial]] = [[] for _ in range(max(domination_ranks) + 1)]
+    for trial, rank in zip(population, domination_ranks):
+        population_per_rank[rank].append(trial)
+
+    return population_per_rank
 
 
 def _calc_crowding_distance(population: list[FrozenTrial]) -> defaultdict[int, float]:
@@ -107,44 +141,3 @@ def _crowding_distance_sort(population: list[FrozenTrial]) -> None:
     manhattan_distances = _calc_crowding_distance(population)
     population.sort(key=lambda x: manhattan_distances[x.number])
     population.reverse()
-
-
-def _fast_non_dominated_sort(
-    population: list[FrozenTrial],
-    directions: list[optuna.study.StudyDirection],
-    dominates: Callable[[FrozenTrial, FrozenTrial, list[optuna.study.StudyDirection]], bool],
-) -> list[list[FrozenTrial]]:
-    dominated_count: defaultdict[int, int] = defaultdict(int)
-    dominates_list = defaultdict(list)
-
-    for p, q in itertools.combinations(population, 2):
-        if dominates(p, q, directions):
-            dominates_list[p.number].append(q.number)
-            dominated_count[q.number] += 1
-        elif dominates(q, p, directions):
-            dominates_list[q.number].append(p.number)
-            dominated_count[p.number] += 1
-
-    population_per_rank = []
-    while population:
-        non_dominated_population = []
-        i = 0
-        while i < len(population):
-            if dominated_count[population[i].number] == 0:
-                individual = population[i]
-                if i == len(population) - 1:
-                    population.pop()
-                else:
-                    population[i] = population.pop()
-                non_dominated_population.append(individual)
-            else:
-                i += 1
-
-        for x in non_dominated_population:
-            for y in dominates_list[x.number]:
-                dominated_count[y] -= 1
-
-        assert non_dominated_population
-        population_per_rank.append(non_dominated_population)
-
-    return population_per_rank

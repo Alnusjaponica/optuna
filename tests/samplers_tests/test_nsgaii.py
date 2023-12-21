@@ -3,7 +3,6 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Callable
 from collections.abc import Sequence
-import copy
 import itertools
 from typing import Any
 from unittest.mock import MagicMock
@@ -33,18 +32,19 @@ from optuna.samplers.nsgaii import UniformCrossover
 from optuna.samplers.nsgaii import VSBXCrossover
 from optuna.samplers.nsgaii._after_trial_strategy import NSGAIIAfterTrialStrategy
 from optuna.samplers.nsgaii._child_generation_strategy import NSGAIIChildGenerationStrategy
+from optuna.samplers.nsgaii._constraints_evaluation import _constrained_dominates
+from optuna.samplers.nsgaii._constraints_evaluation import _validate_constraints
 from optuna.samplers.nsgaii._crossover import _inlined_categorical_uniform_crossover
-from optuna.samplers.nsgaii._dominates import _constrained_dominates
-from optuna.samplers.nsgaii._dominates import _validate_constraints
 from optuna.samplers.nsgaii._elite_population_selection_strategy import (
     NSGAIIElitePopulationSelectionStrategy,
 )
 from optuna.samplers.nsgaii._elite_population_selection_strategy import _calc_crowding_distance
 from optuna.samplers.nsgaii._elite_population_selection_strategy import _crowding_distance_sort
-from optuna.samplers.nsgaii._elite_population_selection_strategy import _fast_non_dominated_sort
+from optuna.samplers.nsgaii._elite_population_selection_strategy import _rank_population
 from optuna.samplers.nsgaii._sampler import _GENERATION_KEY
 from optuna.study._multi_objective import _dominates
 from optuna.study._study_direction import StudyDirection
+from optuna.testing.trials import _create_frozen_trial
 from optuna.trial import FrozenTrial
 
 
@@ -246,8 +246,8 @@ def test_constrained_dominates_feasible_vs_feasible(
     # The results of _constrained_dominates match _dominates in all feasible cases.
     for values1, constraints1 in values_constraints_list:
         for values2, constraints2 in values_constraints_list:
-            t1 = _create_frozen_trial(0, values1, constraints1)
-            t2 = _create_frozen_trial(1, values2, constraints2)
+            t1 = _create_frozen_trial(number=0, values=values1, constraints=constraints1)
+            t2 = _create_frozen_trial(number=1, values=values2, constraints=constraints2)
             assert _constrained_dominates(t1, t2, directions) == _dominates(t1, t2, directions)
 
 
@@ -276,13 +276,13 @@ def test_constrained_dominates_feasible_vs_infeasible(
     # the infeasible trials.
     for constraints1 in constraints_list1:
         for constraints2 in constraints_list2:
-            t1 = _create_frozen_trial(0, [0], constraints1)
-            t2 = _create_frozen_trial(1, [1], constraints2)
+            t1 = _create_frozen_trial(number=0, values=[0], constraints=constraints1)
+            t2 = _create_frozen_trial(number=1, values=[1], constraints=constraints2)
             assert _constrained_dominates(t1, t2, directions)
             assert not _constrained_dominates(t2, t1, directions)
 
-            t1 = _create_frozen_trial(0, [1], constraints1)
-            t2 = _create_frozen_trial(1, [0], constraints2)
+            t1 = _create_frozen_trial(number=0, values=[1], constraints=constraints1)
+            t2 = _create_frozen_trial(number=1, values=[0], constraints=constraints2)
             assert _constrained_dominates(t1, t2, directions)
             assert not _constrained_dominates(t2, t1, directions)
 
@@ -342,13 +342,13 @@ def test_constrained_dominates_infeasible_vs_infeasible(direction: StudyDirectio
             # every constraint in constraints_infeasible_sorted[j].
             for constraints1 in constraints_infeasible_sorted[i]:
                 for constraints2 in constraints_infeasible_sorted[j]:
-                    t1 = _create_frozen_trial(0, [0], constraints1)
-                    t2 = _create_frozen_trial(1, [1], constraints2)
+                    t1 = _create_frozen_trial(number=0, values=[0], constraints=constraints1)
+                    t2 = _create_frozen_trial(number=1, values=[1], constraints=constraints2)
                     assert _constrained_dominates(t1, t2, directions)
                     assert not _constrained_dominates(t2, t1, directions)
 
-                    t1 = _create_frozen_trial(0, [1], constraints1)
-                    t2 = _create_frozen_trial(1, [0], constraints2)
+                    t1 = _create_frozen_trial(number=0, values=[1], constraints=constraints1)
+                    t2 = _create_frozen_trial(number=1, values=[0], constraints=constraints2)
                     assert _constrained_dominates(t1, t2, directions)
                     assert not _constrained_dominates(t2, t1, directions)
 
@@ -356,8 +356,8 @@ def test_constrained_dominates_infeasible_vs_infeasible(direction: StudyDirectio
     for constraints_with_same_violations in constraints_infeasible_sorted:
         for constraints1 in constraints_with_same_violations:
             for constraints2 in constraints_with_same_violations:
-                t1 = _create_frozen_trial(0, [0], constraints1)
-                t2 = _create_frozen_trial(1, [1], constraints2)
+                t1 = _create_frozen_trial(number=0, values=[0], constraints=constraints1)
+                t2 = _create_frozen_trial(number=1, values=[1], constraints=constraints2)
                 assert not _constrained_dominates(t1, t2, directions)
                 assert not _constrained_dominates(t2, t1, directions)
 
@@ -386,88 +386,6 @@ def _assert_population_per_rank(
                     _constrained_dominates(trial1, trial2, direction)
                     for trial1 in population_per_rank[i]
                 )
-
-
-@pytest.mark.parametrize("direction1", [StudyDirection.MINIMIZE, StudyDirection.MAXIMIZE])
-@pytest.mark.parametrize("direction2", [StudyDirection.MINIMIZE, StudyDirection.MAXIMIZE])
-def test_fast_non_dominated_sort_no_constraints(
-    direction1: StudyDirection, direction2: StudyDirection
-) -> None:
-    directions = [direction1, direction2]
-    value_list = [10, 20, 20, 30, float("inf"), float("inf"), -float("inf")]
-    values = [[v1, v2] for v1 in value_list for v2 in value_list]
-
-    trials = [_create_frozen_trial(i, v) for i, v in enumerate(values)]
-    population_per_rank = _fast_non_dominated_sort(copy.copy(trials), directions, _dominates)
-    _assert_population_per_rank(trials, directions, population_per_rank)
-
-
-def test_fast_non_dominated_sort_with_constraints() -> None:
-    value_list = [10, 20, 20, 30, float("inf"), float("inf"), -float("inf")]
-    values = [[v1, v2] for v1 in value_list for v2 in value_list]
-
-    constraint_list = [-float("inf"), -2, 0, 1, 2, 3, float("inf")]
-    constraints = [[c1, c2] for c1 in constraint_list for c2 in constraint_list]
-
-    trials = [
-        _create_frozen_trial(i, v, c)
-        for i, (v, c) in enumerate(itertools.product(values, constraints))
-    ]
-    directions = [StudyDirection.MINIMIZE, StudyDirection.MAXIMIZE]
-    population_per_rank = _fast_non_dominated_sort(
-        copy.copy(trials), directions, _constrained_dominates
-    )
-    _assert_population_per_rank(trials, directions, population_per_rank)
-
-
-def test_validate_constraints() -> None:
-    with pytest.raises(ValueError):
-        _validate_constraints(
-            [_create_frozen_trial(0, [1], [0, float("nan")])],
-            constraints_func=lambda _: [0],
-        )
-
-
-@pytest.mark.parametrize(
-    "values_and_constraints",
-    [
-        [([10], None), ([20], None), ([20], [0]), ([20], [1]), ([30], [-1])],
-        [
-            ([50, 30], None),
-            ([30, 50], None),
-            ([20, 20], [3, 3]),
-            ([30, 10], [0, -1]),
-            ([15, 15], [4, 4]),
-        ],
-    ],
-)
-def test_fast_non_dominated_sort_missing_constraint_values(
-    values_and_constraints: list[tuple[list[float], list[float]]]
-) -> None:
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", optuna.exceptions.ExperimentalWarning)
-
-    values_dim = len(values_and_constraints[0][0])
-    for directions in itertools.product(
-        [StudyDirection.MINIMIZE, StudyDirection.MAXIMIZE], repeat=values_dim
-    ):
-        trials = [_create_frozen_trial(i, v, c) for i, (v, c) in enumerate(values_and_constraints)]
-
-        with pytest.warns(UserWarning):
-            population_per_rank = _fast_non_dominated_sort(
-                copy.copy(trials), list(directions), _constrained_dominates
-            )
-        _assert_population_per_rank(trials, list(directions), population_per_rank)
-
-
-@pytest.mark.parametrize("n_dims", [1, 2, 3])
-def test_fast_non_dominated_sort_empty(n_dims: int) -> None:
-    for directions in itertools.product(
-        [StudyDirection.MINIMIZE, StudyDirection.MAXIMIZE], repeat=n_dims
-    ):
-        trials: list[FrozenTrial] = []
-        population_per_rank = _fast_non_dominated_sort(trials, list(directions), _dominates)
-        assert population_per_rank == []
 
 
 @pytest.mark.parametrize(
@@ -499,7 +417,7 @@ def test_fast_non_dominated_sort_empty(n_dims: int) -> None:
     ],
 )
 def test_calc_crowding_distance(values: list[list[float]], expected_dist: list[float]) -> None:
-    trials = [_create_frozen_trial(i, value) for i, value in enumerate(values)]
+    trials = [_create_frozen_trial(number=i, values=value) for i, value in enumerate(values)]
     crowding_dist = _calc_crowding_distance(trials)
     for i in range(len(trials)):
         assert _nan_equal(crowding_dist[i], expected_dist[i]), i
@@ -517,7 +435,7 @@ def test_calc_crowding_distance(values: list[list[float]], expected_dist: list[f
 )
 def test_crowding_distance_sort(values: list[list[float]]) -> None:
     """Checks that trials are sorted by the values of `_calc_crowding_distance`."""
-    trials = [_create_frozen_trial(i, value) for i, value in enumerate(values)]
+    trials = [_create_frozen_trial(number=i, values=value) for i, value in enumerate(values)]
     crowding_dist = _calc_crowding_distance(trials)
     _crowding_distance_sort(trials)
     sorted_dist = [crowding_dist[t.number] for t in trials]
@@ -575,20 +493,6 @@ def test_after_trial_strategy_experimental_warning() -> None:
         NSGAIISampler(after_trial_strategy=lambda study, trial, state, value: None)
 
 
-# TODO(ohta): Consider to move this utility function to `optuna.testing` module.
-def _create_frozen_trial(
-    number: int, values: Sequence[float], constraints: Sequence[float] | None = None
-) -> optuna.trial.FrozenTrial:
-    trial = optuna.trial.create_trial(
-        state=optuna.trial.TrialState.COMPLETE,
-        values=list(values),
-        system_attrs={} if constraints is None else {_CONSTRAINTS_KEY: list(constraints)},
-    )
-    trial.number = number
-    trial._trial_id = number
-    return trial
-
-
 def test_elite_population_selection_strategy_invalid_value() -> None:
     with pytest.raises(ValueError):
         NSGAIIElitePopulationSelectionStrategy(population_size=1)
@@ -627,6 +531,89 @@ def test_elite_population_selection_strategy_result(
     assert len(elite_population_values) == population_size
     for values in elite_population_values:
         assert values in expected_elite_population
+
+
+@pytest.mark.parametrize("direction1", [StudyDirection.MINIMIZE, StudyDirection.MAXIMIZE])
+@pytest.mark.parametrize("direction2", [StudyDirection.MINIMIZE, StudyDirection.MAXIMIZE])
+def test_fast_non_dominated_sort_no_constraints(
+    direction1: StudyDirection, direction2: StudyDirection
+) -> None:
+    directions = [direction1, direction2]
+    value_list = [10, 20, 20, 30, float("inf"), float("inf"), -float("inf")]
+    values = [[v1, v2] for v1 in value_list for v2 in value_list]
+    trials = [_create_frozen_trial(number=i, values=v) for i, v in enumerate(values)]
+
+    population_per_rank = _rank_population(trials, directions)
+    _assert_population_per_rank(trials, directions, population_per_rank)
+
+
+def test_fast_non_dominated_sort_with_constraints() -> None:
+    value_list = [10, 20, 20, 30, float("inf"), float("inf"), -float("inf")]
+    values = [[v1, v2] for v1 in value_list for v2 in value_list]
+
+    constraint_list = [-float("inf"), -2, 0, 1, 2, 3, float("inf")]
+    constraints = [[c1, c2] for c1 in constraint_list for c2 in constraint_list]
+
+    trials = [
+        _create_frozen_trial(number=i, values=v, constraints=c)
+        for i, (v, c) in enumerate(itertools.product(values, constraints))
+    ]
+    directions = [StudyDirection.MINIMIZE, StudyDirection.MAXIMIZE]
+    population_per_rank = _rank_population(trials, directions, is_constrained=True)
+    _assert_population_per_rank(trials, directions, population_per_rank)
+
+
+def test_validate_constraints() -> None:
+    with pytest.raises(ValueError):
+        _validate_constraints(
+            [_create_frozen_trial(number=0, values=[1], constraints=[0, float("nan")])],
+            is_constrained=True,
+        )
+
+
+@pytest.mark.parametrize(
+    "values_and_constraints",
+    [
+        [([10], None), ([20], None), ([20], [0]), ([20], [1]), ([30], [-1])],
+        [
+            ([50, 30], None),
+            ([30, 50], None),
+            ([20, 20], [3, 3]),
+            ([30, 10], [0, -1]),
+            ([15, 15], [4, 4]),
+        ],
+    ],
+)
+def test_fast_non_dominated_sort_missing_constraint_values(
+    values_and_constraints: list[tuple[list[float], list[float]]]
+) -> None:
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", optuna.exceptions.ExperimentalWarning)
+
+    values_dim = len(values_and_constraints[0][0])
+    for directions in itertools.product(
+        [StudyDirection.MINIMIZE, StudyDirection.MAXIMIZE], repeat=values_dim
+    ):
+        trials = [
+            _create_frozen_trial(number=i, values=v, constraints=c)
+            for i, (v, c) in enumerate(values_and_constraints)
+        ]
+
+        with pytest.warns(UserWarning):
+            _validate_constraints(trials, is_constrained=True)
+
+        population_per_rank = _rank_population(trials, list(directions), is_constrained=True)
+        _assert_population_per_rank(trials, list(directions), population_per_rank)
+
+
+@pytest.mark.parametrize("n_dims", [1, 2, 3])
+def test_fast_non_dominated_sort_empty(n_dims: int) -> None:
+    for directions in itertools.product(
+        [StudyDirection.MINIMIZE, StudyDirection.MAXIMIZE], repeat=n_dims
+    ):
+        trials: list[FrozenTrial] = []
+        population_per_rank = _rank_population(trials, list(directions))
+        assert population_per_rank == []
 
 
 @pytest.mark.parametrize(
@@ -976,5 +963,15 @@ def test_crossover_deterministic(
     rng = Mock()
     rng.rand = Mock(side_effect=_rand)
     rng.normal = Mock(side_effect=_normal)
+    child_params = crossover.crossover(parent_params, rng, study, numerical_transform.bounds)
+    np.testing.assert_almost_equal(child_params, expected_params)
+    child_params = crossover.crossover(parent_params, rng, study, numerical_transform.bounds)
+    np.testing.assert_almost_equal(child_params, expected_params)
+    child_params = crossover.crossover(parent_params, rng, study, numerical_transform.bounds)
+    np.testing.assert_almost_equal(child_params, expected_params)
+    child_params = crossover.crossover(parent_params, rng, study, numerical_transform.bounds)
+    np.testing.assert_almost_equal(child_params, expected_params)
+    child_params = crossover.crossover(parent_params, rng, study, numerical_transform.bounds)
+    np.testing.assert_almost_equal(child_params, expected_params)
     child_params = crossover.crossover(parent_params, rng, study, numerical_transform.bounds)
     np.testing.assert_almost_equal(child_params, expected_params)

@@ -1,23 +1,66 @@
 from __future__ import annotations
 
-from collections.abc import Callable
 from collections.abc import Sequence
 import warnings
 
 import numpy as np
 
 from optuna.samplers._base import _CONSTRAINTS_KEY
-from optuna.study import StudyDirection
 from optuna.study._multi_objective import _dominates
+from optuna.study._study_direction import StudyDirection
 from optuna.trial import FrozenTrial
 from optuna.trial import TrialState
+
+
+def _validate_constraints(
+    population: list[FrozenTrial],
+    *,
+    is_constrained: bool = False,
+) -> None:
+    if not is_constrained:
+        return
+    assert len(population) > 0
+
+    num_constraints = None
+    for _trial in population:
+        _constraints = _trial.system_attrs.get(_CONSTRAINTS_KEY)
+        if _constraints is None:
+            warnings.warn(
+                f"Trial {_trial.number} does not have constraint values."
+                " It will be dominated by the other trials."
+            )
+            continue
+        # Initialize num_constraints with the number of constraints of the first trial with values.
+        num_constraints = len(_constraints) if num_constraints is None else num_constraints
+        if np.any(np.isnan(np.array(_constraints))):
+            raise ValueError("NaN is not acceptable as constraint value.")
+        elif len(_constraints) != num_constraints:
+            raise ValueError("Trials with different numbers of constraints cannot be compared.")
+
+
+def _evaluate_penalty(population: Sequence[FrozenTrial]) -> np.ndarray:
+    """Evaluate feasibility of trials in population.
+
+    Returns:
+        A list of feasibility status T/F/None of trials in population, where T/F means
+        feasible/infeasible and None means that the trial does not have constraint values.
+    """
+
+    penalty: list[float] = []
+    for trial in population:
+        constraints = trial.system_attrs.get(_CONSTRAINTS_KEY)
+        if constraints is None:
+            penalty.append(float("inf"))
+        else:
+            assert isinstance(constraints, (list, tuple))
+            penalty.append(sum(v for v in constraints if v > 0))
+    return np.array(penalty)
 
 
 def _constrained_dominates(
     trial0: FrozenTrial, trial1: FrozenTrial, directions: Sequence[StudyDirection]
 ) -> bool:
     """Checks constrained-domination.
-
     A trial x is said to constrained-dominate a trial y, if any of the following conditions is
     true:
     1) Trial x is feasible and trial y is not.
@@ -84,17 +127,3 @@ def _constrained_dominates(
     violation0 = sum(v for v in constraints0 if v > 0)
     violation1 = sum(v for v in constraints1 if v > 0)
     return violation0 < violation1
-
-
-def _validate_constraints(
-    population: list[FrozenTrial],
-    constraints_func: Callable[[FrozenTrial], Sequence[float]] | None = None,
-) -> None:
-    if constraints_func is None:
-        return
-    for _trial in population:
-        _constraints = _trial.system_attrs.get(_CONSTRAINTS_KEY)
-        if _constraints is None:
-            continue
-        if np.any(np.isnan(np.array(_constraints))):
-            raise ValueError("NaN is not acceptable as constraint value.")
