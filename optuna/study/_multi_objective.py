@@ -117,7 +117,6 @@ def _fast_non_dominated_sort(
         dominated_count[non_dominated_idxs] = -1
         for non_dominated_idx in non_dominated_idxs:
             dominated_count[domination_map[non_dominated_idx]] -= 1
-    print(f"{ranks=}")
     return ranks
 
 
