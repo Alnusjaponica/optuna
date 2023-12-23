@@ -101,7 +101,7 @@ jobs:
         wget https://download.open-mpi.org/release/open-mpi/v4.1/openmpi-4.1.6.tar.bz2
         tar xf openmpi-4.1.6.tar.bz2
         cd openmpi-4.1.6
-        ./configure CC=gcc CXX=g++ F77=gfortran FC=gfortran --enable-mpi-thread-multiple --prefix=/usr/local/bin
+        ./configure CC=gcc CXX=g++ --enable-mpi-thread-multiple --prefix=/usr/local/bin
         make -j 2 all 2>&1 | tee make.out
         make install 2>&1 | tee install.out
         brew install openblas
