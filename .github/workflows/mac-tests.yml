@@ -98,8 +98,12 @@ jobs:
     - name: Setup mac environment
       run: |
         brew install libomp
-        brew install open-mpi
         brew install openblas
+
+    - name: Setup MPI
+      uses: mpi4py/setup-mpi@v1
+      with:
+        mpi: openmpi
 
     - name: Install
       run: |
