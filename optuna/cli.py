@@ -978,7 +978,7 @@ def _add_common_arguments(parser: ArgumentParser) -> ArgumentParser:
         "--storage",
         default=None,
         help=(
-            "DB URL. (e.g. sqlite:///example.db) "
+            "DB URL (e.g. sqlite:///example.db). "
             "Also can be specified via OPTUNA_STORAGE environment variable."
         ),
     )
