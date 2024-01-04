@@ -42,6 +42,8 @@ _DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 
 def _check_storage_url(storage_url: Optional[str]) -> str:
+    """Check if storage_url is specified. If not, raise CLIUsageError."""
+
     if storage_url is not None:
         return storage_url
 
@@ -57,6 +59,8 @@ def _check_storage_url(storage_url: Optional[str]) -> str:
 
 
 def _get_storage(storage_url: Optional[str], storage_class: Optional[str]) -> BaseStorage:
+    """Get storage object from storage_url and storage_class."""
+
     storage_url = _check_storage_url(storage_url)
     if storage_class:
         if storage_class == JournalRedisStorage.__name__:
@@ -78,7 +82,8 @@ def _get_storage(storage_url: Optional[str], storage_class: Optional[str]) -> Ba
 
 
 def _format_value(value: Any) -> Any:
-    #  Format value that can be serialized to JSON or YAML.
+    """Format the provided value so that it can be serialized to JSON or YAML."""
+
     if value is None or isinstance(value, (int, float)):
         return value
     elif isinstance(value, datetime.datetime):
