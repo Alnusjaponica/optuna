@@ -2,42 +2,12 @@ from argparse import _HelpAction
 from argparse import _StoreConstAction
 from argparse import _SubParsersAction
 from argparse import ArgumentParser
-import re
 from typing import Any
 
 
-class NavigationException(Exception):  # noqa: N818
-    pass
-
-
-def parser_navigate(parser_result: dict, path: str, current_path: str | None = None) -> dict:
-    if isinstance(path, str):
-        if path == "":
-            return parser_result
-        path = re.split(r"\s+", path)
-    current_path = current_path or []
-    if len(path) == 0:
-        return parser_result
-    if "children" not in parser_result:
-        raise NavigationException(
-            f"Current parser has no child elements.  (path: {' '.join(current_path)})"
-        )
-    next_hop = path.pop(0)
-    for child in parser_result["children"]:
-        # identifer is only used for aliased subcommands
-        identifier = child["identifier"] if "identifier" in child else child["name"]
-        if identifier == next_hop:
-            current_path.append(next_hop)
-            return parser_navigate(child, path, current_path)
-    raise NavigationException(
-        f"Current parser has no child element with name: {next_hop}  (path: {' '.join(current_path)})"
-    )
-
-
 def _try_add_parser_attribute(data: dict, parser: ArgumentParser, attribname: str) -> None:
+    """Add an attribute to the data dict if it exists on the parser."""
     attribval = getattr(parser, attribname, None)
-    if attribval is None:
-        return
     if not isinstance(attribval, str):
         return
     if len(attribval) > 0:
@@ -45,65 +15,46 @@ def _try_add_parser_attribute(data: dict, parser: ArgumentParser, attribname: st
 
 
 def _format_usage_without_prefix(parser: ArgumentParser) -> str:
-    """
-    Use private argparse APIs to get the usage string without
-    the 'usage: ' prefix.
-    """
+    """Format the usage string without any prefixes."""
     fmt = parser._get_formatter()
     fmt.add_usage(parser.usage, parser._actions, parser._mutually_exclusive_groups, prefix="")
     return fmt.format_help().strip()
 
 
 def parse_parser(parser: ArgumentParser, data: dict | None = None, **kwargs: Any) -> dict:
+    """Parse an ArgumentParser object into a dict."""
     if data is None:
         data = {
             "name": "",
-            "usage": parser.format_usage().strip(),
-            "bare_usage": _format_usage_without_prefix(parser),
+            "usage": _format_usage_without_prefix(parser),
             "prog": parser.prog,
         }
+
+    # Add the description and epilog if they exist.
     _try_add_parser_attribute(data, parser, "description")
     _try_add_parser_attribute(data, parser, "epilog")
+
     for action in parser._get_positional_actions():
+        # Collect the help messages for each subcommand.
         if not isinstance(action, _SubParsersAction):
             continue
         helps = {}
         for item in action._choices_actions:
             helps[item.dest] = item.help
 
-        # commands which share an existing parser are an alias,
-        # don't duplicate docs
-        subsection_alias: dict[str, list[str]] = {}
-        subsection_alias_names = set()
+        # Add the subcommands to the data.
         for name, subaction in action._name_parser_map.items():
-            if subaction not in subsection_alias:
-                subsection_alias[subaction] = []
-            else:
-                subsection_alias[subaction].append(name)
-                subsection_alias_names.add(name)
-
-        for name, subaction in action._name_parser_map.items():
-            if name in subsection_alias_names:
-                continue
-            subalias = subsection_alias[subaction]
             subaction.prog = f"{parser.prog} {name}"
             subdata = {
-                "name": name if not subalias else f"{name} ({', '.join(subalias)})",
+                "name": name,
                 "help": helps.get(name, ""),
-                "usage": subaction.format_usage().strip(),
-                "bare_usage": _format_usage_without_prefix(subaction),
+                "usage": _format_usage_without_prefix(subaction),
             }
-            if subalias:
-                subdata["identifier"] = name
             parse_parser(subaction, subdata, **kwargs)
             data.setdefault("children", []).append(subdata)
 
-    show_defaults = True
-    if kwargs.get("skip_default_values", False) is True:
-        show_defaults = False
-    show_defaults_const = show_defaults
-    if kwargs.get("skip_default_const_values", False) is True:
-        show_defaults_const = False
+    skip_defaults = kwargs.get("skip_default_values", False)
+    skip_defaults_const = kwargs.get("skip_default_const_values", False) or False
 
     # argparse stores the different groups as a list in parser._action_groups
     # the first element of the list holds the positional arguments, the
@@ -135,26 +86,25 @@ def parse_parser(parser: ArgumentParser, data: dict | None = None, **kwargs: Any
                 pass
 
             # Options have the option_strings set, positional arguments don't
-            name = action.option_strings
-            if name == []:
-                if action.metavar is None:
-                    name = [action.dest]
-                else:
-                    name = [action.metavar]
-            # Skip lines for subcommands
-            if name == ["==SUPPRESS=="]:
+            option_strings = action.option_strings
+            # Skip lines for subcommands.
+            if option_strings == ["==SUPPRESS=="]:
                 continue
+            if option_strings == []:
+                options_name = [action.metavar if action.metavar else action.dest]
+            else:
+                options_name = option_strings
 
             if isinstance(action, _StoreConstAction):
                 option = {
-                    "name": name,
-                    "default": default if show_defaults_const else "==SUPPRESS==",
+                    "name": options_name,
+                    "default": default if not skip_defaults_const else "==SUPPRESS==",
                     "help": help_str,
                 }
             else:
                 option = {
-                    "name": name,
-                    "default": default if show_defaults else "==SUPPRESS==",
+                    "name": options_name,
+                    "default": default if not skip_defaults else "==SUPPRESS==",
                     "help": help_str,
                 }
             if action.choices:
@@ -164,14 +114,6 @@ def parse_parser(parser: ArgumentParser, data: dict | None = None, **kwargs: Any
 
         if len(options_list) == 0:
             continue
-
-        # Upper case "Positional Arguments" and "Optional Arguments" titles
-        # Since python-3.10 'optional arguments' changed to 'options'
-        # more info: https://github.com/python/cpython/pull/23858
-        if action_group.title == "optional arguments" or action_group.title == "options":
-            action_group.title = parser.prog
-        if action_group.title == "positional arguments":
-            action_group.title = "Positional Arguments"
 
         group = {
             "title": action_group.title,
