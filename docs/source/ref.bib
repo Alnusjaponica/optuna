@@ -15,3 +15,18 @@
   volume = {32},
   year = {2014},
 }
+@InProceedings{pmlr-v188-makarova22a,
+  title = 	 {Automatic Termination for Hyperparameter Optimization},
+  author =       {Makarova, Anastasia and Shen, Huibin and Perrone, Valerio and Klein, Aaron and Faddoul, Jean Baptiste and Krause, Andreas and Seeger, Matthias and Archambeau, Cedric},
+  booktitle = 	 {Proceedings of the First International Conference on Automated Machine Learning},
+  pages = 	 {7/1--21},
+  year = 	 {2022},
+  editor = 	 {Guyon, Isabelle and Lindauer, Marius and van der Schaar, Mihaela and Hutter, Frank and Garnett, Roman},
+  volume = 	 {188},
+  series = 	 {Proceedings of Machine Learning Research},
+  month = 	 {25--27 Jul},
+  publisher =    {PMLR},
+  pdf = 	 {https://proceedings.mlr.press/v188/makarova22a/makarova22a.pdf},
+  url = 	 {https://proceedings.mlr.press/v188/makarova22a.html},
+  abstract = 	 {Bayesian optimization (BO) is a widely popular approach for the hyperparameter optimization (HPO) in machine learning.  At its core, BO iteratively evaluates promising configurations until a user-defined budget, such as wall-clock time or number of iterations, is exhausted. While the final performance after tuning heavily depends on the provided budget, it is hard to pre-specify an optimal value in advance. In this work, we propose an effective and intuitive termination criterion for BO that automatically stops  the procedure if it is sufficiently close to the global optimum. Our key insight is that the discrepancy between the true objective (predictive performance on test data) and the computable target (validation performance) suggests stopping once the suboptimality in optimizing the target is dominated by the statistical estimation error. Across an extensive range of real-world HPO problems and baselines, we show that our termination criterion achieves a better trade-off between the test performance and optimization time. Additionally, we find that overfitting may occur in the context of HPO, which is arguably an overlooked problem in the literature, and show how our termination criterion helps to mitigate this phenomenon on both small and large datasets.}
+}

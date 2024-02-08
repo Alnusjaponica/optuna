@@ -5,13 +5,17 @@ from typing import Optional
 
 from optuna._experimental import experimental_class
 from optuna.study.study import Study
-from optuna.terminator.erroreval import BaseErrorEvaluator
-from optuna.terminator.erroreval import CrossValidationErrorEvaluator
-from optuna.terminator.erroreval import StaticErrorEvaluator
-from optuna.terminator.improvement.evaluator import BaseImprovementEvaluator
-from optuna.terminator.improvement.evaluator import BestValueStagnationEvaluator
-from optuna.terminator.improvement.evaluator import DEFAULT_MIN_N_TRIALS
-from optuna.terminator.improvement.evaluator import RegretBoundEvaluator
+from optuna.terminator.erroreval import (
+    BaseErrorEvaluator,
+    CrossValidationErrorEvaluator,
+    StaticErrorEvaluator,
+)
+from optuna.terminator.improvement.evaluator import (
+    DEFAULT_MIN_N_TRIALS,
+    BaseImprovementEvaluator,
+    BestValueStagnationEvaluator,
+    RegretBoundEvaluator,
+)
 from optuna.trial import TrialState
 
 
@@ -27,14 +31,9 @@ class BaseTerminator(metaclass=abc.ABCMeta):
 class Terminator(BaseTerminator):
     """Automatic stopping mechanism for Optuna studies.
 
-    This class implements an automatic stopping mechanism for Optuna studies, aiming to prevent
-    unnecessary computation. The study is terminated when the statistical error, e.g.
-    cross-validation error, exceeds the room left for optimization.
-
-    For further information about the algorithm, please refer to the following paper:
-
-    - `A. Makarova et al. Automatic termination for hyperparameter optimization.
-      <https://arxiv.org/abs/2104.08166>`_
+    This class implements an automatic stopping mechanism :cite:p:`pmlr-v188-makarova22a` for
+    Optuna studies, aiming to prevent unnecessary computation. The study is terminated when the
+    statistical error, e.g. cross-validation error, exceeds the room left for optimization.
 
     Args:
         improvement_evaluator:
