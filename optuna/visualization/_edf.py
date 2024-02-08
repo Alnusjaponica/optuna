@@ -48,8 +48,10 @@ def plot_edf(
     .. note::
 
         EDF is useful to analyze and improve search spaces.
-        For instance, you can see a practical use case of EDF in the paper
-        `Designing Network Design Spaces <https://arxiv.org/abs/2003.13678>`_.
+        For instance, you can see a practical use case of EDF, e.g. in
+        \ :footcite:p:`Radosavovic_2020_CVPR`.
+
+    .. footbibliography::
 
     .. note::
 
