@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from typing import Sequence
+from collections.abc import Sequence
 from unittest.mock import MagicMock
 from unittest.mock import patch
 import warnings
@@ -11,15 +11,23 @@ import pytest
 
 import optuna
 from optuna.samplers import BaseSampler
-from optuna.samplers import NSGAIIISampler
 from optuna.samplers._base import _CONSTRAINTS_KEY
-from optuna.samplers._nsgaiii import _associate_individuals_with_reference_points
-from optuna.samplers._nsgaiii import _COEF
-from optuna.samplers._nsgaiii import _filter_inf
-from optuna.samplers._nsgaiii import _generate_default_reference_point
-from optuna.samplers._nsgaiii import _normalize_objective_values
-from optuna.samplers._nsgaiii import _POPULATION_CACHE_KEY_PREFIX
-from optuna.samplers._nsgaiii import _preserve_niche_individuals
+from optuna.samplers._nsgaiii._elite_population_selection_strategy import (
+    _associate_individuals_with_reference_points,
+)
+from optuna.samplers._nsgaiii._elite_population_selection_strategy import (
+    _generate_default_reference_point,
+)
+from optuna.samplers._nsgaiii._elite_population_selection_strategy import (
+    _normalize_objective_values,
+)
+from optuna.samplers._nsgaiii._elite_population_selection_strategy import (
+    _preserve_niche_individuals,
+)
+from optuna.samplers._nsgaiii._elite_population_selection_strategy import _COEF
+from optuna.samplers._nsgaiii._elite_population_selection_strategy import _filter_inf
+from optuna.samplers._nsgaiii._sampler import _POPULATION_CACHE_KEY_PREFIX
+from optuna.samplers._nsgaiii._sampler import NSGAIIISampler
 from optuna.samplers.nsgaii import BaseCrossover
 from optuna.samplers.nsgaii import BLXAlphaCrossover
 from optuna.samplers.nsgaii import SBXCrossover
@@ -40,7 +48,7 @@ def test_population_size() -> None:
     study.optimize(lambda t: [t.suggest_float("x", 0, 9)], n_trials=40)
 
     generations = Counter(
-        [t.system_attrs[optuna.samplers._nsgaiii._GENERATION_KEY] for t in study.trials]
+        [t.system_attrs[optuna.samplers._nsgaiii._sampler._GENERATION_KEY] for t in study.trials]
     )
     assert generations == {0: 10, 1: 10, 2: 10, 3: 10}
 
@@ -51,7 +59,7 @@ def test_population_size() -> None:
     study.optimize(lambda t: [t.suggest_float("x", 0, 9)], n_trials=40)
 
     generations = Counter(
-        [t.system_attrs[optuna.samplers._nsgaiii._GENERATION_KEY] for t in study.trials]
+        [t.system_attrs[optuna.samplers._nsgaiii._sampler._GENERATION_KEY] for t in study.trials]
     )
     assert generations == {i: 2 for i in range(20)}
 
@@ -60,9 +68,10 @@ def test_population_size() -> None:
         # Less than 2.
         NSGAIIISampler(population_size=1)
 
-    with pytest.raises(TypeError):
-        # Not an integer.
-        NSGAIIISampler(population_size=2.5)  # type: ignore[arg-type]
+    with pytest.raises(ValueError):
+        mock_crossover = MagicMock(spec=BaseCrossover)
+        mock_crossover.configure_mock(n_parents=3)
+        NSGAIIISampler(population_size=2, crossover=mock_crossover)
 
 
 def test_mutation_prob() -> None:
@@ -205,6 +214,11 @@ def test_study_system_attr_for_population_cache() -> None:
 def test_constraints_func_experimental_warning() -> None:
     with pytest.warns(optuna.exceptions.ExperimentalWarning):
         NSGAIIISampler(constraints_func=lambda _: [0])
+
+
+def test_child_generation_strategy_experimental_warning() -> None:
+    with pytest.warns(optuna.exceptions.ExperimentalWarning):
+        NSGAIIISampler(child_generation_strategy=lambda study, search_space, parent_population: {})
 
 
 def test_after_trial_strategy_experimental_warning() -> None:
@@ -601,7 +615,7 @@ def test_niching(
             population,
             np.array(closest_reference_points),
             np.array(distance_reference_points),
-            sampler._rng,
+            sampler._rng.rng,
         )
     ]
     expected_additional_elite_population = [
@@ -622,5 +636,5 @@ def test_niching_unexpected_target_population_size() -> None:
             population,
             np.array([0]),
             np.array([0.0]),
-            sampler._rng,
+            sampler._rng.rng,
         )

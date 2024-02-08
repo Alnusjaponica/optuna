@@ -1,20 +1,19 @@
+from __future__ import annotations
+
 import abc
+from collections.abc import Callable
+from collections.abc import Container
+from collections.abc import Generator
+from collections.abc import Iterable
+from collections.abc import Iterator
+from collections.abc import Sequence
 import copy
 import json
 import os
 import pickle
 import time
 from typing import Any
-from typing import Callable
 from typing import cast
-from typing import Container
-from typing import Dict
-from typing import Generator
-from typing import Iterator
-from typing import List
-from typing import Optional
-from typing import Tuple
-from typing import Union
 import warnings
 
 import numpy as np
@@ -33,7 +32,6 @@ with try_import() as _imports:
     import lightgbm as lgb
     from sklearn.model_selection import BaseCrossValidator
 
-    VALID_SET_TYPE = Union[List[lgb.Dataset], Tuple[lgb.Dataset, ...], lgb.Dataset]
 
 # Define key names of `Trial.system_attrs`.
 _ELAPSED_SECS_KEY = "lightgbm_tuner:elapsed_secs"
@@ -64,8 +62,8 @@ _logger = optuna.logging.get_logger(__name__)
 class _BaseTuner:
     def __init__(
         self,
-        lgbm_params: Optional[Dict[str, Any]] = None,
-        lgbm_kwargs: Optional[Dict[str, Any]] = None,
+        lgbm_params: dict[str, Any] | None = None,
+        lgbm_kwargs: dict[str, Any] | None = None,
     ) -> None:
         # Handling alias metrics.
         if lgbm_params is not None:
@@ -78,11 +76,11 @@ class _BaseTuner:
         metric = self.lgbm_params.get("metric", "binary_logloss")
 
         # todo (smly): This implementation is different logic from the LightGBM's python bindings.
-        if type(metric) is str:
+        if isinstance(metric, str):
             pass
-        elif type(metric) is list:
+        elif isinstance(metric, Sequence):
             metric = metric[-1]
-        elif type(metric) is set:
+        elif isinstance(metric, Iterable):
             metric = list(metric)[-1]
         else:
             raise NotImplementedError
@@ -92,22 +90,24 @@ class _BaseTuner:
 
     def _get_booster_best_score(self, booster: "lgb.Booster") -> float:
         metric = self._get_metric_for_objective()
-        valid_sets: Optional[VALID_SET_TYPE] = self.lgbm_kwargs.get("valid_sets")
+        valid_sets: list["lgb.Dataset"] | tuple[
+            "lgb.Dataset", ...
+        ] | "lgb.Dataset" | None = self.lgbm_kwargs.get("valid_sets")
 
         if self.lgbm_kwargs.get("valid_names") is not None:
-            if type(self.lgbm_kwargs["valid_names"]) is str:
+            if isinstance(self.lgbm_kwargs["valid_names"], str):
                 valid_name = self.lgbm_kwargs["valid_names"]
-            elif type(self.lgbm_kwargs["valid_names"]) in [list, tuple]:
+            elif isinstance(self.lgbm_kwargs["valid_names"], Sequence):
                 valid_name = self.lgbm_kwargs["valid_names"][-1]
             else:
                 raise NotImplementedError
 
-        elif type(valid_sets) is lgb.Dataset:
+        elif isinstance(valid_sets, lgb.Dataset):
             valid_name = "valid_0"
 
-        elif isinstance(valid_sets, (list, tuple)) and len(valid_sets) > 0:
+        elif isinstance(valid_sets, Sequence) and len(valid_sets) > 0:
             valid_set_idx = len(valid_sets) - 1
-            valid_name = "valid_{}".format(valid_set_idx)
+            valid_name = f"valid_{valid_set_idx}"
 
         else:
             raise NotImplementedError
@@ -116,27 +116,27 @@ class _BaseTuner:
         return val_score
 
     def _metric_with_eval_at(self, metric: str) -> str:
-        if metric != "ndcg" and metric != "map":
+        # The parameter eval_at is only available when the metric is ndcg or map
+        if metric not in ["ndcg", "map"]:
             return metric
 
-        eval_at = self.lgbm_params.get("eval_at")
-        if eval_at is None:
-            eval_at = self.lgbm_params.get("{}_at".format(metric))
-        if eval_at is None:
-            eval_at = self.lgbm_params.get("{}_eval_at".format(metric))
-        if eval_at is None:
-            # Set default value of LightGBM.
+        eval_at = (
+            self.lgbm_params.get("eval_at")
+            or self.lgbm_params.get(f"{metric}_at")
+            or self.lgbm_params.get(f"{metric}_eval_at")
+            # Set default value of LightGBM when no possible key is absent.
             # See https://lightgbm.readthedocs.io/en/latest/Parameters.html#eval_at.
-            eval_at = [1, 2, 3, 4, 5]
+            or [1, 2, 3, 4, 5]
+        )
 
         # Optuna can handle only a single metric. Choose first one.
-        if type(eval_at) in [list, tuple]:
-            return "{}@{}".format(metric, eval_at[0])
-        if type(eval_at) is int:
-            return "{}@{}".format(metric, eval_at)
+        if isinstance(eval_at, (list, tuple)):
+            return f"{metric}@{eval_at[0]}"
+        if isinstance(eval_at, int):
+            return f"{metric}@{eval_at}"
         raise ValueError(
-            "The value of eval_at is expected to be int or a list/tuple of int."
-            "'{}' is specified.".format(eval_at)
+            f"The value of eval_at is expected to be int or a list/tuple of int. '{eval_at}' is "
+            "specified."
         )
 
     def higher_is_better(self) -> bool:
@@ -155,14 +155,14 @@ class _OptunaObjective(_BaseTuner):
 
     def __init__(
         self,
-        target_param_names: List[str],
-        lgbm_params: Dict[str, Any],
+        target_param_names: list[str],
+        lgbm_params: dict[str, Any],
         train_set: "lgb.Dataset",
-        lgbm_kwargs: Dict[str, Any],
+        lgbm_kwargs: dict[str, Any],
         best_score: float,
         step_name: str,
-        model_dir: Optional[str],
-        pbar: Optional[tqdm.tqdm] = None,
+        model_dir: str | None,
+        pbar: tqdm.tqdm | None = None,
     ):
         self.target_param_names = target_param_names
         self.pbar = pbar
@@ -172,7 +172,9 @@ class _OptunaObjective(_BaseTuner):
 
         self.trial_count = 0
         self.best_score = best_score
-        self.best_booster_with_trial_number: Optional[Tuple["lgb.Booster", int]] = None
+        self.best_booster_with_trial_number: tuple[
+            "lgb.Booster" | "lgb.CVBooster", int
+        ] | None = None
         self.step_name = step_name
         self.model_dir = model_dir
 
@@ -180,18 +182,12 @@ class _OptunaObjective(_BaseTuner):
         self.pbar_fmt = "{}, val_score: {:.6f}"
 
     def _check_target_names_supported(self) -> None:
-        supported_param_names = [
-            "lambda_l1",
-            "lambda_l2",
-            "num_leaves",
-            "feature_fraction",
-            "bagging_fraction",
-            "bagging_freq",
-            "min_child_samples",
-        ]
         for target_param_name in self.target_param_names:
-            if target_param_name not in supported_param_names:
-                raise NotImplementedError("Parameter `{}` is not supported for tuning.")
+            if target_param_name in _DEFAULT_LIGHTGBM_PARAMETERS:
+                continue
+            raise NotImplementedError(
+                f"Parameter `{target_param_name}` is not supported for tuning."
+            )
 
     def _preprocess(self, trial: optuna.trial.Trial) -> None:
         if self.pbar is not None:
@@ -223,7 +219,9 @@ class _OptunaObjective(_BaseTuner):
             param_value = trial.suggest_int("min_child_samples", 5, 100)
             self.lgbm_params["min_child_samples"] = param_value
 
-    def _copy_valid_sets(self, valid_sets: "VALID_SET_TYPE") -> "VALID_SET_TYPE":
+    def _copy_valid_sets(
+        self, valid_sets: list["lgb.Dataset"] | tuple["lgb.Dataset", ...] | "lgb.Dataset"
+    ) -> list["lgb.Dataset"] | tuple["lgb.Dataset", ...] | "lgb.Dataset":
         if isinstance(valid_sets, list):
             return [copy.copy(d) for d in valid_sets]
         if isinstance(valid_sets, tuple):
@@ -244,10 +242,10 @@ class _OptunaObjective(_BaseTuner):
         average_iteration_time = elapsed_secs / booster.current_iteration()
 
         if self.model_dir is not None:
-            path = os.path.join(self.model_dir, "{}.pkl".format(trial.number))
+            path = os.path.join(self.model_dir, f"{trial.number}.pkl")
             with open(path, "wb") as fout:
                 pickle.dump(booster, fout)
-            _logger.info("The booster of trial#{} was saved as {}.".format(trial.number, path))
+            _logger.info(f"The booster of trial#{trial.number} was saved as {path}.")
 
         if self.compare_validation_metrics(val_score, self.best_score):
             self.best_score = val_score
@@ -279,14 +277,14 @@ class _OptunaObjective(_BaseTuner):
 class _OptunaObjectiveCV(_OptunaObjective):
     def __init__(
         self,
-        target_param_names: List[str],
-        lgbm_params: Dict[str, Any],
+        target_param_names: list[str],
+        lgbm_params: dict[str, Any],
         train_set: "lgb.Dataset",
-        lgbm_kwargs: Dict[str, Any],
+        lgbm_kwargs: dict[str, Any],
         best_score: float,
         step_name: str,
-        model_dir: Optional[str],
-        pbar: Optional[tqdm.tqdm] = None,
+        model_dir: str | None,
+        pbar: tqdm.tqdm | None = None,
     ):
         super().__init__(
             target_param_names,
@@ -299,7 +297,7 @@ class _OptunaObjectiveCV(_OptunaObjective):
             pbar=pbar,
         )
 
-    def _get_cv_scores(self, cv_results: Dict[str, List[float]]) -> List[float]:
+    def _get_cv_scores(self, cv_results: dict[str, list[float] | "lgb.CVBooster"]) -> list[float]:
         metric = self._get_metric_for_objective()
         metric_key = f"{metric}-mean"
         # The prefix "valid " is added to metric name since LightGBM v4.0.0.
@@ -308,6 +306,7 @@ class _OptunaObjectiveCV(_OptunaObjective):
             if metric_key in cv_results
             else cv_results["valid " + metric_key]
         )
+        assert not isinstance(val_scores, lgb.CVBooster)
         return val_scores
 
     def __call__(self, trial: optuna.trial.Trial) -> float:
@@ -323,17 +322,19 @@ class _OptunaObjectiveCV(_OptunaObjective):
         average_iteration_time = elapsed_secs / len(val_scores)
 
         if self.model_dir is not None and self.lgbm_kwargs.get("return_cvbooster"):
-            path = os.path.join(self.model_dir, "{}.pkl".format(trial.number))
+            path = os.path.join(self.model_dir, f"{trial.number}.pkl")
             with open(path, "wb") as fout:
                 # At version `lightgbm==3.0.0`, :class:`lightgbm.CVBooster` does not
                 # have `__getstate__` which is required for pickle serialization.
                 cvbooster = cv_results["cvbooster"]
+                assert isinstance(cvbooster, lgb.CVBooster)
                 pickle.dump((cvbooster.boosters, cvbooster.best_iteration), fout)
-            _logger.info("The booster of trial#{} was saved as {}.".format(trial.number, path))
+            _logger.info(f"The booster of trial#{trial.number} was saved as {path}.")
 
         if self.compare_validation_metrics(val_score, self.best_score):
             self.best_score = val_score
             if self.lgbm_kwargs.get("return_cvbooster"):
+                assert not isinstance(cv_results["cvbooster"], list)
                 self.best_booster_with_trial_number = (cv_results["cvbooster"], trial.number)
 
         self._postprocess(trial, elapsed_secs, average_iteration_time)
@@ -351,51 +352,31 @@ class _LightGBMBaseTuner(_BaseTuner):
 
     def __init__(
         self,
-        params: Dict[str, Any],
+        params: dict[str, Any],
         train_set: "lgb.Dataset",
-        callbacks: List[Callable[..., Any]],
+        callbacks: list[Callable[..., Any]] | None = None,
         num_boost_round: int = 1000,
-        fobj: Optional[Callable[..., Any]] = None,
-        feval: Optional[Callable[..., Any]] = None,
+        feval: Callable[..., Any] | None = None,
         feature_name: str = "auto",
         categorical_feature: str = "auto",
-        early_stopping_rounds: Optional[int] = None,
-        verbose_eval: Optional[Union[bool, int, str]] = None,
-        time_budget: Optional[int] = None,
-        sample_size: Optional[int] = None,
-        study: Optional[optuna.study.Study] = None,
-        optuna_callbacks: Optional[List[Callable[[Study, FrozenTrial], None]]] = None,
-        verbosity: Optional[int] = None,
+        time_budget: int | None = None,
+        sample_size: int | None = None,
+        study: optuna.study.Study | None = None,
+        optuna_callbacks: list[Callable[[Study, FrozenTrial], None]] | None = None,
+        verbosity: int | None = None,
         show_progress_bar: bool = True,
-        model_dir: Optional[str] = None,
+        model_dir: str | None = None,
         *,
-        optuna_seed: Optional[int] = None,
+        optuna_seed: int | None = None,
     ) -> None:
         _imports.check()
 
         params = copy.deepcopy(params)
-        if fobj is not None:
-            if "objective" not in params:
-                params["objective"] = fobj
-            else:
-                warnings.warn(
-                    "Objective function is specified by param['objective'] and therefore `fobj`"
-                    " will be ignored.",
-                    UserWarning,
-                )
 
         # Handling alias metrics.
         _handling_alias_metrics(params)
-
-        if early_stopping_rounds is not None:
-            callbacks.append(
-                lgb.early_stopping(
-                    stopping_rounds=early_stopping_rounds, verbose=bool(verbose_eval)
-                )
-            )
-
         args = [params, train_set]
-        kwargs: Dict[str, Any] = dict(
+        kwargs: dict[str, Any] = dict(
             num_boost_round=num_boost_round,
             feval=feval,
             feature_name=feature_name,
@@ -407,20 +388,18 @@ class _LightGBMBaseTuner(_BaseTuner):
             show_progress_bar=show_progress_bar,
         )
         self._parse_args(*args, **kwargs)
-        self._start_time: Optional[float] = None
+        self._start_time: float | None = None
         self._optuna_callbacks = optuna_callbacks
-        self._best_booster_with_trial_number: Optional[
-            Tuple[Union[lgb.Booster, lgb.CVBooster], int]
-        ] = None
+        self._best_booster_with_trial_number: tuple[lgb.Booster | lgb.CVBooster, int] | None = None
         self._model_dir = model_dir
         self._optuna_seed = optuna_seed
 
-        # Should not alter data since `min_data_in_leaf` is tuned.
+        # Should not alter data since `min_child_samples` is tuned.
         # https://lightgbm.readthedocs.io/en/latest/Parameters.html#feature_pre_filter
         if self.lgbm_params.get("feature_pre_filter", False):
             warnings.warn(
                 "feature_pre_filter is given as True but will be set to False. This is required "
-                "for the tuner to tune min_data_in_leaf."
+                "for the tuner to tune min_child_samples."
             )
         self.lgbm_params["feature_pre_filter"] = False
 
@@ -435,15 +414,15 @@ class _LightGBMBaseTuner(_BaseTuner):
             if self.study.direction != optuna.study.StudyDirection.MAXIMIZE:
                 metric_name = self.lgbm_params.get("metric", "binary_logloss")
                 raise ValueError(
-                    "Study direction is inconsistent with the metric {}. "
-                    "Please set 'maximize' as the direction.".format(metric_name)
+                    f"Study direction is inconsistent with the metric {metric_name}. "
+                    "Please set 'maximize' as the direction."
                 )
         else:
             if self.study.direction != optuna.study.StudyDirection.MINIMIZE:
                 metric_name = self.lgbm_params.get("metric", "binary_logloss")
                 raise ValueError(
-                    "Study direction is inconsistent with the metric {}. "
-                    "Please set 'minimize' as the direction.".format(metric_name)
+                    f"Study direction is inconsistent with the metric {metric_name}. "
+                    "Please set 'minimize' as the direction."
                 )
 
         if verbosity is not None:
@@ -468,7 +447,7 @@ class _LightGBMBaseTuner(_BaseTuner):
             return -np.inf if self.higher_is_better() else np.inf
 
     @property
-    def best_params(self) -> Dict[str, Any]:
+    def best_params(self) -> dict[str, Any]:
         """Return parameters of the best booster."""
         try:
             return json.loads(self.study.best_trial.system_attrs[_LGBM_PARAMS_KEY])
@@ -478,44 +457,6 @@ class _LightGBMBaseTuner(_BaseTuner):
             # self.lgbm_params may contain parameters given by users.
             params.update(self.lgbm_params)
             return params
-
-    def get_best_booster(self) -> "lgb.Booster":
-        """Return the best booster.
-
-        If the best booster cannot be found, :class:`ValueError` will be raised. To prevent the
-        errors, please save boosters by specifying the ``model_dir`` argument of
-        :meth:`~optuna.integration.lightgbm.LightGBMTuner.__init__`,
-        when you resume tuning or you run tuning in parallel.
-        """
-        if self._best_booster_with_trial_number is not None:
-            if self._best_booster_with_trial_number[1] == self.study.best_trial.number:
-                return self._best_booster_with_trial_number[0]
-        if len(self.study.trials) == 0:
-            raise ValueError("The best booster is not available because no trials completed.")
-
-        # The best booster exists, but this instance does not have it.
-        # This may be due to resuming or parallelization.
-        if self._model_dir is None:
-            raise ValueError(
-                "The best booster cannot be found. It may be found in the other processes due to "
-                "resuming or distributed computing. Please set the `model_dir` argument of "
-                "`LightGBMTuner.__init__` and make sure that boosters are shared with all "
-                "processes."
-            )
-
-        best_trial = self.study.best_trial
-        path = os.path.join(self._model_dir, "{}.pkl".format(best_trial.number))
-        if not os.path.exists(path):
-            raise ValueError(
-                "The best booster cannot be found in {}. If you execute `LightGBMTuner` in "
-                "distributed environment, please use network file system (e.g., NFS) to share "
-                "models with multiple workers.".format(self._model_dir)
-            )
-
-        with open(path, "rb") as fin:
-            booster = pickle.load(fin)
-
-        return booster
 
     def _parse_args(self, *args: Any, **kwargs: Any) -> None:
         self.auto_options = {
@@ -619,11 +560,11 @@ class _LightGBMBaseTuner(_BaseTuner):
         param_values = [5, 10, 25, 50, 100]
 
         sampler = optuna.samplers.GridSampler({param_name: param_values}, seed=self._optuna_seed)
-        self._tune_params([param_name], len(param_values), sampler, "min_data_in_leaf")
+        self._tune_params([param_name], len(param_values), sampler, "min_child_samples")
 
     def _tune_params(
         self,
-        target_param_names: List[str],
+        target_param_names: list[str],
         n_trials: int,
         sampler: optuna.samplers.BaseSampler,
         step_name: str,
@@ -680,16 +621,16 @@ class _LightGBMBaseTuner(_BaseTuner):
     @abc.abstractmethod
     def _create_objective(
         self,
-        target_param_names: List[str],
+        target_param_names: list[str],
         train_set: "lgb.Dataset",
         step_name: str,
-        pbar: Optional[tqdm.tqdm],
+        pbar: tqdm.tqdm | None,
     ) -> _OptunaObjective:
         raise NotImplementedError
 
     def _create_stepwise_study(
-        self, study: "optuna.study.Study", step_name: str
-    ) -> "optuna.study.Study":
+        self, study: optuna.study.Study, step_name: str
+    ) -> optuna.study.Study:
         # This class is assumed to be passed to a sampler and a pruner corresponding to the step.
         class _StepwiseStudy(optuna.study.Study):
             def __init__(self, study: optuna.study.Study, step_name: str) -> None:
@@ -704,8 +645,8 @@ class _LightGBMBaseTuner(_BaseTuner):
             def get_trials(
                 self,
                 deepcopy: bool = True,
-                states: Optional[Container[TrialState]] = None,
-            ) -> List[optuna.trial.FrozenTrial]:
+                states: Container[TrialState] | None = None,
+            ) -> list[optuna.trial.FrozenTrial]:
                 trials = super()._get_trials(deepcopy=deepcopy, states=states)
                 return [t for t in trials if t.system_attrs.get(_STEP_NAME_KEY) == self._step_name]
 
@@ -743,8 +684,12 @@ class LightGBMTuner(_LightGBMBaseTuner):
     /medium.com/optuna/lightgbm-tuner-new-optuna-integration-for-hyperparameter-optimization-8b709
     5e99258>`_ by `Kohei Ozaki <https://www.kaggle.com/confirm>`_, a Kaggle Grandmaster.
 
-    Arguments and keyword arguments for `lightgbm.train()
-    <https://lightgbm.readthedocs.io/en/latest/pythonapi/lightgbm.train.html>`_ can be passed.
+    .. note::
+        Arguments and keyword arguments for `lightgbm.train()
+        <https://lightgbm.readthedocs.io/en/latest/pythonapi/lightgbm.train.html>`_ can be passed.
+        For ``params``, please check `the official documentation for LightGBM
+        <https://lightgbm.readthedocs.io/en/latest/Parameters.html>`_.
+
     The arguments that only :class:`~optuna.integration.lightgbm.LightGBMTuner` has are
     listed below:
 
@@ -808,58 +753,34 @@ class LightGBMTuner(_LightGBMBaseTuner):
 
     def __init__(
         self,
-        params: Dict[str, Any],
+        params: dict[str, Any],
         train_set: "lgb.Dataset",
         num_boost_round: int = 1000,
-        valid_sets: Optional["VALID_SET_TYPE"] = None,
-        valid_names: Optional[Any] = None,
-        fobj: Optional[Callable[..., Any]] = None,
-        feval: Optional[Callable[..., Any]] = None,
+        valid_sets: list["lgb.Dataset"] | tuple["lgb.Dataset", ...] | "lgb.Dataset" | None = None,
+        valid_names: Any | None = None,
+        feval: Callable[..., Any] | None = None,
         feature_name: str = "auto",
         categorical_feature: str = "auto",
-        early_stopping_rounds: Optional[int] = None,
-        evals_result: Optional[Dict[Any, Any]] = None,
-        verbose_eval: Optional[Union[bool, int, str]] = "warn",
-        learning_rates: Optional[List[float]] = None,
         keep_training_booster: bool = False,
-        callbacks: Optional[List[Callable[..., Any]]] = None,
-        time_budget: Optional[int] = None,
-        sample_size: Optional[int] = None,
-        study: Optional[optuna.study.Study] = None,
-        optuna_callbacks: Optional[List[Callable[[Study, FrozenTrial], None]]] = None,
-        model_dir: Optional[str] = None,
-        verbosity: Optional[int] = None,
+        callbacks: list[Callable[..., Any]] | None = None,
+        time_budget: int | None = None,
+        sample_size: int | None = None,
+        study: optuna.study.Study | None = None,
+        optuna_callbacks: list[Callable[[Study, FrozenTrial], None]] | None = None,
+        model_dir: str | None = None,
+        verbosity: int | None = None,
         show_progress_bar: bool = True,
         *,
-        optuna_seed: Optional[int] = None,
+        optuna_seed: int | None = None,
     ) -> None:
-        if callbacks is None:
-            callbacks = []
-
-        if evals_result is not None:
-            callbacks.append(lgb.record_evaluation(evals_result))
-
-        if learning_rates is not None:
-            callbacks.append(lgb.reset_parameter(learning_rate=learning_rates))
-
-        if verbose_eval == "warn":
-            verbose_eval = False if callbacks else True
-        if verbose_eval is True:
-            callbacks.append(lgb.log_evaluation())
-        elif isinstance(verbose_eval, int):
-            callbacks.append(lgb.log_evaluation(verbose_eval))
-
         super().__init__(
             params,
             train_set,
             callbacks=callbacks,
             num_boost_round=num_boost_round,
-            fobj=fobj,
             feval=feval,
             feature_name=feature_name,
             categorical_feature=categorical_feature,
-            early_stopping_rounds=early_stopping_rounds,
-            verbose_eval=verbose_eval,
             time_budget=time_budget,
             sample_size=sample_size,
             study=study,
@@ -874,17 +795,17 @@ class LightGBMTuner(_LightGBMBaseTuner):
         self.lgbm_kwargs["valid_names"] = valid_names
         self.lgbm_kwargs["keep_training_booster"] = keep_training_booster
 
-        self._best_booster_with_trial_number: Optional[Tuple[lgb.Booster, int]] = None
+        self._best_booster_with_trial_number: tuple[lgb.Booster, int] | None = None
 
         if valid_sets is None:
             raise ValueError("`valid_sets` is required.")
 
     def _create_objective(
         self,
-        target_param_names: List[str],
+        target_param_names: list[str],
         train_set: "lgb.Dataset",
         step_name: str,
-        pbar: Optional[tqdm.tqdm],
+        pbar: tqdm.tqdm | None,
     ) -> _OptunaObjective:
         return _OptunaObjective(
             target_param_names,
@@ -896,6 +817,44 @@ class LightGBMTuner(_LightGBMBaseTuner):
             model_dir=self._model_dir,
             pbar=pbar,
         )
+
+    def get_best_booster(self) -> "lgb.Booster":
+        """Return the best booster.
+
+        If the best booster cannot be found, :class:`ValueError` will be raised. To prevent the
+        errors, please save boosters by specifying the ``model_dir`` argument of
+        :meth:`~optuna.integration.lightgbm.LightGBMTuner.__init__`,
+        when you resume tuning or you run tuning in parallel.
+        """
+        if self._best_booster_with_trial_number is not None:
+            if self._best_booster_with_trial_number[1] == self.study.best_trial.number:
+                return self._best_booster_with_trial_number[0]
+        if len(self.study.trials) == 0:
+            raise ValueError("The best booster is not available because no trials completed.")
+
+        # The best booster exists, but this instance does not have it.
+        # This may be due to resuming or parallelization.
+        if self._model_dir is None:
+            raise ValueError(
+                "The best booster cannot be found. It may be found in the other processes due to "
+                "resuming or distributed computing. Please set the `model_dir` argument of "
+                "`LightGBMTuner.__init__` and make sure that boosters are shared with all "
+                "processes."
+            )
+
+        best_trial = self.study.best_trial
+        path = os.path.join(self._model_dir, f"{best_trial.number}.pkl")
+        if not os.path.exists(path):
+            raise ValueError(
+                f"The best booster cannot be found in {self._model_dir}. If you execute "
+                "`LightGBMTuner` in distributed environment, please use network file system "
+                "(e.g., NFS) to share models with multiple workers."
+            )
+
+        with open(path, "rb") as fin:
+            booster = pickle.load(fin)
+
+        return booster
 
 
 class LightGBMTunerCV(_LightGBMBaseTuner):
@@ -909,8 +868,12 @@ class LightGBMTunerCV(_LightGBMBaseTuner):
     `a simple example <https://github.com/optuna/optuna-examples/tree/main/lightgbm/
     lightgbm_tuner_cv.py>`_ which optimizes the validation log loss of cancer detection.
 
-    Arguments and keyword arguments for `lightgbm.cv()`_ can be passed except
-    ``metrics``, ``init_model`` and ``eval_train_metric``.
+    .. note::
+        Arguments and keyword arguments for `lightgbm.cv()`_ can be passed except
+        ``metrics``, ``init_model`` and ``eval_train_metric``.
+        For ``params``, please check `the official documentation for LightGBM
+        <https://lightgbm.readthedocs.io/en/latest/Parameters.html>`_.
+
     The arguments that only :class:`~optuna.integration.lightgbm.LightGBMTunerCV` has are
     listed below:
 
@@ -979,59 +942,41 @@ class LightGBMTunerCV(_LightGBMBaseTuner):
 
     def __init__(
         self,
-        params: Dict[str, Any],
+        params: dict[str, Any],
         train_set: "lgb.Dataset",
         num_boost_round: int = 1000,
-        folds: Optional[
-            Union[
-                Generator[Tuple[int, int], None, None],
-                Iterator[Tuple[int, int]],
-                "BaseCrossValidator",
-            ]
-        ] = None,
+        folds: Generator[tuple[int, int], None, None]
+        | Iterator[tuple[int, int]]
+        | "BaseCrossValidator"
+        | None = None,
         nfold: int = 5,
         stratified: bool = True,
         shuffle: bool = True,
-        fobj: Optional[Callable[..., Any]] = None,
-        feval: Optional[Callable[..., Any]] = None,
+        feval: Callable[..., Any] | None = None,
         feature_name: str = "auto",
         categorical_feature: str = "auto",
-        early_stopping_rounds: Optional[int] = None,
-        fpreproc: Optional[Callable[..., Any]] = None,
-        verbose_eval: Optional[Union[bool, int]] = None,
-        show_stdv: bool = True,
+        fpreproc: Callable[..., Any] | None = None,
         seed: int = 0,
-        callbacks: Optional[List[Callable[..., Any]]] = None,
-        time_budget: Optional[int] = None,
-        sample_size: Optional[int] = None,
-        study: Optional[optuna.study.Study] = None,
-        optuna_callbacks: Optional[List[Callable[[Study, FrozenTrial], None]]] = None,
-        verbosity: Optional[int] = None,
+        callbacks: list[Callable[..., Any]] | None = None,
+        time_budget: int | None = None,
+        sample_size: int | None = None,
+        study: optuna.study.Study | None = None,
+        optuna_callbacks: list[Callable[[Study, FrozenTrial], None]] | None = None,
+        verbosity: int | None = None,
         show_progress_bar: bool = True,
-        model_dir: Optional[str] = None,
+        model_dir: str | None = None,
         return_cvbooster: bool = False,
         *,
-        optuna_seed: Optional[int] = None,
+        optuna_seed: int | None = None,
     ) -> None:
-        if callbacks is None:
-            callbacks = []
-
-        if verbose_eval is True:
-            callbacks.append(lgb.log_evaluation(show_stdv=show_stdv))
-        elif isinstance(verbose_eval, int):
-            callbacks.append(lgb.log_evaluation(period=verbose_eval, show_stdv=show_stdv))
-
         super().__init__(
             params,
             train_set,
             callbacks=callbacks,
             num_boost_round=num_boost_round,
-            fobj=fobj,
             feval=feval,
             feature_name=feature_name,
             categorical_feature=categorical_feature,
-            early_stopping_rounds=early_stopping_rounds,
-            verbose_eval=verbose_eval,
             time_budget=time_budget,
             sample_size=sample_size,
             study=study,
@@ -1052,10 +997,10 @@ class LightGBMTunerCV(_LightGBMBaseTuner):
 
     def _create_objective(
         self,
-        target_param_names: List[str],
+        target_param_names: list[str],
         train_set: "lgb.Dataset",
         step_name: str,
-        pbar: Optional[tqdm.tqdm],
+        pbar: tqdm.tqdm | None,
     ) -> _OptunaObjective:
         return _OptunaObjectiveCV(
             target_param_names,
@@ -1083,6 +1028,7 @@ class LightGBMTunerCV(_LightGBMBaseTuner):
             )
         if self._best_booster_with_trial_number is not None:
             if self._best_booster_with_trial_number[1] == self.study.best_trial.number:
+                assert isinstance(self._best_booster_with_trial_number[0], lgb.CVBooster)
                 return self._best_booster_with_trial_number[0]
         if len(self.study.trials) == 0:
             raise ValueError("The best booster is not available because no trials completed.")
@@ -1098,12 +1044,12 @@ class LightGBMTunerCV(_LightGBMBaseTuner):
             )
 
         best_trial = self.study.best_trial
-        path = os.path.join(self._model_dir, "{}.pkl".format(best_trial.number))
+        path = os.path.join(self._model_dir, f"{best_trial.number}.pkl")
         if not os.path.exists(path):
             raise ValueError(
-                "The best booster cannot be found in {}. If you execute `LightGBMTunerCV` in "
-                "distributed environment, please use network file system (e.g., NFS) to share "
-                "models with multiple workers.".format(self._model_dir)
+                f"The best booster cannot be found in {self._model_dir}. If you execute "
+                "`LightGBMTunerCV` in distributed environment, please use network file system "
+                "(e.g., NFS) to share models with multiple workers."
             )
 
         with open(path, "rb") as fin:

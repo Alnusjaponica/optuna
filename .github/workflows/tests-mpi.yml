@@ -1,6 +1,7 @@
 name: Tests (MPI)
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - master
@@ -19,7 +20,14 @@ jobs:
 
     strategy:
       matrix:
-        python-version: ['3.7', '3.8', '3.9', '3.10', '3.11']
+        python-version: ['3.8', '3.9', '3.10', '3.11']
+        test-trigger-type:
+          - ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 'Scheduled' || '' }}
+        exclude:
+          - test-trigger-type: ""
+            python-version: "3.9"
+          - test-trigger-type: ""
+            python-version: "3.10"
 
     steps:
     - name: Checkout
@@ -55,7 +63,11 @@ jobs:
         optuna --version
 
         pip install --progress-bar off .[test]
-        pip install --progress-bar off .[optional]
+        pip install --progress-bar off .[optional] --extra-index-url https://download.pytorch.org/whl/cpu
+
+        # TODO(not522): Remove this line when torchmetrics can be installed with extra-index-url
+        pip install --progress-bar off torchmetrics
+
         pip install --progress-bar off .[integration] --extra-index-url https://download.pytorch.org/whl/cpu
 
     - name: Output installed packages
@@ -69,10 +81,7 @@ jobs:
     - name: Tests
       run: |
         export OMPI_MCA_rmaps_base_oversubscribe=yes
-
-        if [ ${{ matrix.python-version }} != 3.11 ]; then
-          mpirun -n 2 -- pytest tests/integration_tests/test_pytorch_distributed.py
-        fi
+        mpirun -n 2 pytest -- tests/integration_tests/test_pytorch_distributed.py
 
       env:
         OMP_NUM_THREADS: 1

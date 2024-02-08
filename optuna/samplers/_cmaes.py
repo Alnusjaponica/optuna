@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import copy
 import math
 import pickle
@@ -25,6 +27,7 @@ from optuna.distributions import FloatDistribution
 from optuna.distributions import IntDistribution
 from optuna.exceptions import ExperimentalWarning
 from optuna.samplers import BaseSampler
+from optuna.samplers._lazy_random_state import LazyRandomState
 from optuna.search_space import IntersectionSearchSpace
 from optuna.study._study_direction import StudyDirection
 from optuna.trial import FrozenTrial
@@ -111,6 +114,9 @@ class CmaEsSampler(BaseSampler):
     - `R. Hamano, S. Saito, M. Nomura, S. Shirakawa. CMA-ES with Margin: Lower-Bounding Marginal
       Probability for Mixed-Integer Black-Box Optimization, GECCO. 2022.
       <https://arxiv.org/abs/2205.13482>`_
+    - `M. Nomura, Y. Akimoto, I. Ono. CMA-ES with Learning Rate Adaptation: Can CMA-ES with
+      Default Population Size Solve Multimodal and Noisy Problems?, GECCO. 2023.
+      <https://arxiv.org/abs/2304.03473>`_
 
     .. seealso::
         You can also use :class:`optuna.integration.PyCmaSampler` which is a sampler using cma
@@ -218,6 +224,18 @@ class CmaEsSampler(BaseSampler):
                 versions without prior notice. See
                 https://github.com/optuna/optuna/releases/tag/v3.1.0.
 
+        lr_adapt:
+            If this is :obj:`True`, CMA-ES with learning rate adaptation is used.
+            This algorithm focuses on working well on multimodal and/or noisy problems
+            with default settings.
+            Currently, this option cannot be used with ``use_separable_cma=True`` or
+            ``with_margin=True``.
+
+            .. note::
+                Added in v3.3.0 or later, as an experimental feature.
+                The interface may change in newer versions without prior notice. See
+                https://github.com/optuna/optuna/releases/tag/v3.3.0.
+
         source_trials:
             This option is for Warm Starting CMA-ES, a method to transfer prior knowledge on
             similar HPO tasks through the initialization of CMA-ES. This method estimates a
@@ -247,6 +265,7 @@ class CmaEsSampler(BaseSampler):
         inc_popsize: int = 2,
         use_separable_cma: bool = False,
         with_margin: bool = False,
+        lr_adapt: bool = False,
         source_trials: Optional[List[FrozenTrial]] = None,
     ) -> None:
         self._x0 = x0
@@ -254,7 +273,7 @@ class CmaEsSampler(BaseSampler):
         self._independent_sampler = independent_sampler or optuna.samplers.RandomSampler(seed=seed)
         self._n_startup_trials = n_startup_trials
         self._warn_independent_sampling = warn_independent_sampling
-        self._cma_rng = np.random.RandomState(seed)
+        self._cma_rng = LazyRandomState(seed)
         self._search_space = IntersectionSearchSpace()
         self._consider_pruned_trials = consider_pruned_trials
         self._restart_strategy = restart_strategy
@@ -262,6 +281,7 @@ class CmaEsSampler(BaseSampler):
         self._inc_popsize = inc_popsize
         self._use_separable_cma = use_separable_cma
         self._with_margin = with_margin
+        self._lr_adapt = lr_adapt
         self._source_trials = source_trials
 
         if self._restart_strategy:
@@ -299,6 +319,13 @@ class CmaEsSampler(BaseSampler):
                 ExperimentalWarning,
             )
 
+        if self._lr_adapt:
+            warnings.warn(
+                "`lr_adapt` option is an experimental feature."
+                " The interface can change in the future.",
+                ExperimentalWarning,
+            )
+
         if source_trials is not None and (x0 is not None or sigma0 is not None):
             raise ValueError(
                 "It is prohibited to pass `source_trials` argument when "
@@ -309,6 +336,12 @@ class CmaEsSampler(BaseSampler):
         if source_trials is not None and use_separable_cma:
             raise ValueError(
                 "It is prohibited to pass `source_trials` argument when using separable CMA-ES."
+            )
+
+        if lr_adapt and (use_separable_cma or with_margin):
+            raise ValueError(
+                "It is prohibited to pass `use_separable_cma` or `with_margin` argument when "
+                "using `lr_adapt`."
             )
 
         if restart_strategy not in (
@@ -464,7 +497,7 @@ class CmaEsSampler(BaseSampler):
                     popsize_multiplier = self._inc_popsize**n_restarts_with_large
                     popsize = math.floor(
                         self._initial_popsize
-                        * popsize_multiplier ** (self._cma_rng.uniform() ** 2)
+                        * popsize_multiplier ** (self._cma_rng.rng.uniform() ** 2)
                     )
                 else:
                     poptype = "large"
@@ -482,7 +515,7 @@ class CmaEsSampler(BaseSampler):
                 study._storage.set_trial_system_attr(trial._trial_id, key, optimizer_attrs[key])
 
         # Caution: optimizer should update its seed value.
-        seed = self._cma_rng.randint(1, 2**16) + trial.number
+        seed = self._cma_rng.rng.randint(1, 2**16) + trial.number
         optimizer._rng.seed(seed)
         if isinstance(optimizer, cmaes.CMAwM):
             params, x_for_tell = optimizer.ask()
@@ -612,7 +645,7 @@ class CmaEsSampler(BaseSampler):
 
         if self._source_trials is None:
             if randomize_start_point:
-                mean = lower_bounds + (upper_bounds - lower_bounds) * self._cma_rng.rand(
+                mean = lower_bounds + (upper_bounds - lower_bounds) * self._cma_rng.rng.rand(
                     n_dimension
                 )
             elif self._x0 is None:
@@ -654,7 +687,7 @@ class CmaEsSampler(BaseSampler):
                 mean=mean,
                 sigma=sigma0,
                 bounds=trans.bounds,
-                seed=self._cma_rng.randint(1, 2**31 - 2),
+                seed=self._cma_rng.rng.randint(1, 2**31 - 2),
                 n_max_resampling=10 * n_dimension,
                 population_size=population_size,
             )
@@ -677,7 +710,7 @@ class CmaEsSampler(BaseSampler):
                 bounds=trans.bounds,
                 steps=steps,
                 cov=cov,
-                seed=self._cma_rng.randint(1, 2**31 - 2),
+                seed=self._cma_rng.rng.randint(1, 2**31 - 2),
                 n_max_resampling=10 * n_dimension,
                 population_size=population_size,
             )
@@ -687,9 +720,10 @@ class CmaEsSampler(BaseSampler):
             sigma=sigma0,
             cov=cov,
             bounds=trans.bounds,
-            seed=self._cma_rng.randint(1, 2**31 - 2),
+            seed=self._cma_rng.rng.randint(1, 2**31 - 2),
             n_max_resampling=10 * n_dimension,
             population_size=population_size,
+            lr_adapt=self._lr_adapt,
         )
 
     def sample_independent(
@@ -747,6 +781,9 @@ class CmaEsSampler(BaseSampler):
     ) -> List[FrozenTrial]:
         generation_attr_key = self._attr_keys.generation(n_restarts)
         return [t for t in trials if generation == t.system_attrs.get(generation_attr_key, -1)]
+
+    def before_trial(self, study: optuna.Study, trial: FrozenTrial) -> None:
+        self._independent_sampler.before_trial(study, trial)
 
     def after_trial(
         self,

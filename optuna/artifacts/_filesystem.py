@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 import shutil
 from typing import TYPE_CHECKING
 
+from optuna._experimental import experimental_class
 from optuna.artifacts.exceptions import ArtifactNotFound
 
 
@@ -11,27 +13,40 @@ if TYPE_CHECKING:
     from typing import BinaryIO
 
 
+@experimental_class("3.3.0")
 class FileSystemArtifactStore:
-    """An artifact backend for file systems.
+    """An artifact store for file systems.
+
+    Args:
+        base_path:
+            The base path to a directory to store artifacts.
 
     Example:
-       .. code-block:: python
+        .. code-block:: python
 
-           import optuna
-           from optuna_dashboard.artifact import upload_artifact
-           from optuna_dashboard.artifact.file_system import FileSystemBackend
+            import os
 
-           artifact_backend = FileSystemBackend("./artifacts")
+            import optuna
+            from optuna.artifacts import FileSystemArtifactStore
+            from optuna.artifacts import upload_artifact
 
 
-           def objective(trial: optuna.Trial) -> float:
-               ... = trial.suggest_float("x", -10, 10)
-               file_path = generate_example_png(...)
-               upload_artifact(artifact_backend, trial, file_path)
-               return ...
+            base_path = "./artifacts"
+            os.makedirs(base_path, exist_ok=True)
+            artifact_store = FileSystemArtifactStore(base_path=base_path)
+
+
+            def objective(trial: optuna.Trial) -> float:
+                ... = trial.suggest_float("x", -10, 10)
+                file_path = generate_example(...)
+                upload_artifact(trial, file_path, artifact_store)
+                return ...
     """
 
-    def __init__(self, base_path: str) -> None:
+    def __init__(self, base_path: str | Path) -> None:
+        if isinstance(base_path, str):
+            base_path = Path(base_path)
+        # TODO(Shinichi): Check if the base_path is valid directory.
         self._base_path = base_path
 
     def open_reader(self, artifact_id: str) -> BinaryIO:

@@ -41,7 +41,6 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-3.9-${{ env.cache-name }}-${{ hashFiles('**/pyproject.toml') }}
 
-    # TODO(c-bata): Remove the version constraint on fakeredis
     - name: Install
       run: |
         python -m pip install --upgrade pip
@@ -53,7 +52,7 @@ jobs:
         pip install --progress-bar off .[test]
         pip install --progress-bar off .[optional]
         pip install PyQt6 # Install PyQT for using QtAgg as matplotlib backend.
-        pip install "fakeredis<2.11.1"
+        pip install "kaleido<=0.1.0post1"  # TODO(HideakiImamura): Remove this after fixing https://github.com/plotly/Kaleido/issues/110
 
     - name: Output installed packages
       run: |
@@ -107,7 +106,6 @@ jobs:
       with:
         mpi: "msmpi"
 
-    # TODO(c-bata): Remove the version constraint on fakeredis
     - name: Install
       run: |
         python -m pip install --upgrade pip
@@ -120,7 +118,11 @@ jobs:
         pip install --progress-bar off .[optional]
         pip install --progress-bar off .[integration]
         pip install "distributed<2023.3.2"
-        pip install "fakeredis<2.11.1"
+
+        # TODO(nabenabe0928): Remove the version constraint on Torch.
+        pip install "torch<2.2.0"
+        pip install "torchaudio<2.2.0"
+        pip install "torchvision<0.17.0"
 
     - name: Output installed packages
       run: |

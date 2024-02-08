@@ -1,11 +1,11 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+from collections.abc import Sequence
 from enum import Enum
 import math
-from typing import Callable
 from typing import cast
 from typing import NamedTuple
-from typing import Sequence
 
 import numpy as np
 
@@ -216,7 +216,7 @@ def plot_optimization_history(
             A flag to show the error bar.
 
     Returns:
-        A :class:`plotly.graph_objs.Figure` object.
+        A :class:`plotly.graph_objects.Figure` object.
     """
 
     _imports.check()

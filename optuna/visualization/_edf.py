@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from typing import Callable
+from collections.abc import Callable
+from collections.abc import Sequence
 from typing import cast
 from typing import NamedTuple
-from typing import Sequence
 
 import numpy as np
 
@@ -110,7 +110,7 @@ def plot_edf(
             Target's name to display on the axis label.
 
     Returns:
-        A :class:`plotly.graph_objs.Figure` object.
+        A :class:`plotly.graph_objects.Figure` object.
     """
 
     _imports.check()
