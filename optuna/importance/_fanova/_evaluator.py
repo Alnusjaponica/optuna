@@ -1,18 +1,17 @@
-from typing import Callable
-from typing import Dict
-from typing import List
-from typing import Optional
+from typing import Callable, Dict, List, Optional
 
 import numpy
 
 from optuna._transform import _SearchSpaceTransform
-from optuna.importance._base import _get_distributions
-from optuna.importance._base import _get_filtered_trials
-from optuna.importance._base import _get_target_values
-from optuna.importance._base import _get_trans_params
-from optuna.importance._base import _param_importances_to_dict
-from optuna.importance._base import _sort_dict_by_importance
-from optuna.importance._base import BaseImportanceEvaluator
+from optuna.importance._base import (
+    BaseImportanceEvaluator,
+    _get_distributions,
+    _get_filtered_trials,
+    _get_target_values,
+    _get_trans_params,
+    _param_importances_to_dict,
+    _sort_dict_by_importance,
+)
 from optuna.importance._fanova._fanova import _Fanova
 from optuna.study import Study
 from optuna.trial import FrozenTrial
@@ -21,7 +20,8 @@ from optuna.trial import FrozenTrial
 class FanovaImportanceEvaluator(BaseImportanceEvaluator):
     """fANOVA importance evaluator.
 
-    Implements the fANOVA hyperparameter importance evaluation algorithm :cite:p:`hutter2014efficient`.
+    Implements the fANOVA hyperparameter importance evaluation algorithm
+    :cite:p:`pmlr-v32-hutter14`.
 
     fANOVA fits a random forest regression model that predicts the objective values
     of :class:`~optuna.trial.TrialState.COMPLETE` trials given their parameter configurations.
