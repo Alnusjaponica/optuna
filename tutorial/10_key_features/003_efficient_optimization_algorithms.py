@@ -25,6 +25,8 @@ Optuna provides the following sampling algorithms:
 
 - CMA-ES based algorithm implemented in :class:`~optuna.samplers.CmaEsSampler`
 
+- Gaussian process-based algorithm implemented in :class:`~optuna.samplers.GPSampler`
+
 - Algorithm to enable partial fixed parameters implemented in :class:`~optuna.samplers.PartialFixedSampler`
 
 - Nondominated Sorting Genetic Algorithm II implemented in :class:`~optuna.samplers.NSGAIISampler`
@@ -80,6 +82,8 @@ print(f"Sampler is {study.sampler.__class__.__name__}")
 #
 # - Threshold pruning algorithm implemented in :class:`~optuna.pruners.ThresholdPruner`
 #
+# - A pruning algorithm based on `Wilcoxon signed-rank test <https://en.wikipedia.org/wiki/Wilcoxon_signed-rank_test>`_ implemented in :class:`~optuna.pruners.WilcoxonPruner`
+#
 # We use :class:`~optuna.pruners.MedianPruner` in most examples,
 # though basically it is outperformed by :class:`~optuna.pruners.SuccessiveHalvingPruner` and
 # :class:`~optuna.pruners.HyperbandPruner` as in `this benchmark result <https://github.com/optuna/optuna/wiki/Benchmarks-with-Kurobako>`_.
@@ -92,7 +96,7 @@ print(f"Sampler is {study.sampler.__class__.__name__}")
 # :func:`~optuna.trial.Trial.should_prune` decides termination of the trial that does not meet a predefined condition.
 #
 # We would recommend using integration modules for major machine learning frameworks.
-# Exclusive list is :mod:`~optuna.integration` and usecases are available in `~optuna/examples <https://github.com/optuna/optuna-examples/>`_.
+# Exclusive list is :mod:`~optuna.integration` and usecases are available in `optuna-examples <https://github.com/optuna/optuna-examples/>`_.
 
 
 import logging
@@ -174,10 +178,10 @@ study.optimize(objective, n_trials=20)
 #
 # For the complete list of Optuna's integration modules, see :mod:`~optuna.integration`.
 #
-# For example, :class:`~optuna.integration.XGBoostPruningCallback` introduces pruning without directly changing the logic of training iteration.
-# (See also `example <https://github.com/optuna/optuna-examples/tree/main/xgboost/xgboost_integration.py>`_ for the entire script.)
+# For example, :class:`~optuna.integration.LightGBMPruningCallback` introduces pruning without directly changing the logic of training iteration.
+# (See also `example <https://github.com/optuna/optuna-examples/blob/main/lightgbm/lightgbm_integration.py>`_ for the entire script.)
 #
 # .. code-block:: python
 #
-#         pruning_callback = optuna.integration.XGBoostPruningCallback(trial, 'validation-error')
-#         bst = xgb.train(param, dtrain, evals=[(dvalid, 'validation')], callbacks=[pruning_callback])
+#         pruning_callback = optuna.integration.LightGBMPruningCallback(trial, 'validation-error')
+#         gbm = lgb.train(param, dtrain, valid_sets=[dvalid], callbacks=[pruning_callback])
