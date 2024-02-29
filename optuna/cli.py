@@ -975,25 +975,12 @@ _COMMANDS: Dict[str, Type[_BaseCommand]] = {
 
 
 def _add_common_arguments(parser: ArgumentParser) -> ArgumentParser:
-    parser.add_argument(
-        "--storage",
-        default=None,
-        help=(
-            "DB URL (e.g. sqlite:///example.db). "
-            "Also can be specified via OPTUNA_STORAGE environment variable."
-        ),
+    "Add options shared among sub-commands to the parser."
+
+    options_for_subcommands = parser.add_argument_group(
+        "options in common", "Options shared among sub-commands"
     )
-    parser.add_argument(
-        "--storage-class",
-        help="Storage class hint (e.g. JournalFileStorage)",
-        default=None,
-        choices=[
-            RDBStorage.__name__,
-            JournalFileStorage.__name__,
-            JournalRedisStorage.__name__,
-        ],
-    )
-    verbose_group = parser.add_mutually_exclusive_group()
+    verbose_group = options_for_subcommands.add_mutually_exclusive_group()
     verbose_group.add_argument(
         "-v",
         "--verbose",
@@ -1010,13 +997,31 @@ def _add_common_arguments(parser: ArgumentParser) -> ArgumentParser:
         const=0,
         help="Suppress output except warnings and errors.",
     )
-    parser.add_argument(
+    options_for_subcommands.add_argument(
+        "--storage",
+        default=None,
+        help=(
+            "DB URL (e.g. sqlite:///example.db). "
+            "Also can be specified via OPTUNA_STORAGE environment variable."
+        ),
+    )
+    options_for_subcommands.add_argument(
+        "--storage-class",
+        help="Storage class hint (e.g. JournalFileStorage)",
+        default=None,
+        choices=[
+            RDBStorage.__name__,
+            JournalFileStorage.__name__,
+            JournalRedisStorage.__name__,
+        ],
+    )
+    options_for_subcommands.add_argument(
         "--log-file",
         action="store",
         default=None,
         help="Specify a file to log output. Disabled by default.",
     )
-    parser.add_argument(
+    options_for_subcommands.add_argument(
         "--debug",
         default=False,
         action="store_true",
