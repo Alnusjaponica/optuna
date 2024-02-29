@@ -1,4 +1,3 @@
-import collections
 import itertools
 from numbers import Real
 from typing import Any
@@ -15,6 +14,7 @@ import numpy as np
 from optuna.distributions import BaseDistribution
 from optuna.logging import get_logger
 from optuna.samplers import BaseSampler
+from optuna.samplers._lazy_random_state import LazyRandomState
 from optuna.study import Study
 from optuna.trial import FrozenTrial
 from optuna.trial import TrialState
@@ -51,9 +51,12 @@ class GridSampler(BaseSampler):
 
     Note:
 
-        :class:`~optuna.samplers.GridSampler` automatically stops the optimization if all
-        combinations in the passed ``search_space`` have already been evaluated, internally
-        invoking the :func:`~optuna.study.Study.stop` method.
+        This sampler with :ref:`ask_and_tell` raises :exc:`RuntimeError` just after evaluating
+        the final grid. This is because :class:`~optuna.samplers.GridSampler` automatically
+        stops the optimization if all combinations in the passed ``search_space`` have already
+        been evaluated, internally invoking the :func:`~optuna.study.Study.stop` method.
+        As a workaround, we need to handle the error manually as in
+        https://github.com/optuna/optuna/issues/4121#issuecomment-1305289910.
 
     Note:
 
@@ -106,21 +109,20 @@ class GridSampler(BaseSampler):
             for value in param_values:
                 self._check_value(param_name, value)
 
-        self._search_space = collections.OrderedDict()
+        self._search_space = {}
         for param_name, param_values in sorted(search_space.items()):
             self._search_space[param_name] = list(param_values)
 
         self._all_grids = list(itertools.product(*self._search_space.values()))
         self._param_names = sorted(search_space.keys())
         self._n_min_trials = len(self._all_grids)
-        self._rng = np.random.RandomState(seed)
+        self._rng = LazyRandomState(seed)
+        self._rng.rng.shuffle(self._all_grids)
 
     def reseed_rng(self) -> None:
-        self._rng.seed()
+        self._rng.rng.seed()
 
-    def infer_relative_search_space(
-        self, study: Study, trial: FrozenTrial
-    ) -> Dict[str, BaseDistribution]:
+    def before_trial(self, study: Study, trial: FrozenTrial) -> None:
         # Instead of returning param values, GridSampler puts the target grid id as a system attr,
         # and the values are returned from `sample_independent`. This is because the distribution
         # object is hard to get at the beginning of trial, while we need the access to the object
@@ -129,7 +131,14 @@ class GridSampler(BaseSampler):
         # When the trial is created by RetryFailedTrialCallback or enqueue_trial, we should not
         # assign a new grid_id.
         if "grid_id" in trial.system_attrs or "fixed_params" in trial.system_attrs:
-            return {}
+            return
+
+        if 0 <= trial.number and trial.number < self._n_min_trials:
+            study._storage.set_trial_system_attr(
+                trial._trial_id, "search_space", self._search_space
+            )
+            study._storage.set_trial_system_attr(trial._trial_id, "grid_id", trial.number)
+            return
 
         target_grids = self._get_unvisited_grid_ids(study)
 
@@ -149,11 +158,14 @@ class GridSampler(BaseSampler):
 
         # In distributed optimization, multiple workers may simultaneously pick up the same grid.
         # To make the conflict less frequent, the grid is chosen randomly.
-        grid_id = int(self._rng.choice(target_grids))
+        grid_id = int(self._rng.rng.choice(target_grids))
 
         study._storage.set_trial_system_attr(trial._trial_id, "search_space", self._search_space)
         study._storage.set_trial_system_attr(trial._trial_id, "grid_id", grid_id)
 
+    def infer_relative_search_space(
+        self, study: Study, trial: FrozenTrial
+    ) -> Dict[str, BaseDistribution]:
         return {}
 
     def sample_relative(

@@ -16,7 +16,6 @@ Command-Line Interface
     delete-study, Delete a specified study.
     storage upgrade, Upgrade the schema of a storage.
     studies, Show a list of studies.
-    study optimize, Start optimization of a study.
     study set-user-attr, Set a user attribute to a study.
     tell, Finish a trial\\, which was created by the ask command.
     trials, Show a list of trials.
@@ -26,7 +25,6 @@ Optuna provides command-line interface as shown in the above table.
 Let us assume you are not in IPython shell and writing Python script files instead.
 It is totally fine to write scripts like the following:
 """
-
 
 import optuna
 

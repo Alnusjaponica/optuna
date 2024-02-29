@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import math
+from typing import Any
 from typing import Callable
 from typing import NamedTuple
 
 from optuna.logging import get_logger
+from optuna.samplers._base import _CONSTRAINTS_KEY
 from optuna.study import Study
+from optuna.study import StudyDirection
 from optuna.trial import FrozenTrial
 from optuna.trial import TrialState
 from optuna.visualization._plotly_imports import _imports
@@ -42,6 +45,7 @@ class _SubContourInfo(NamedTuple):
     xaxis: _AxisInfo
     yaxis: _AxisInfo
     z_values: dict[tuple[int, int], float]
+    constraints: list[bool] = []
 
 
 class _ContourInfo(NamedTuple):
@@ -49,6 +53,11 @@ class _ContourInfo(NamedTuple):
     sub_plot_infos: list[list[_SubContourInfo]]
     reverse_scale: bool
     target_name: str
+
+
+class _PlotValues(NamedTuple):
+    x: list[Any]
+    y: list[Any]
 
 
 def plot_contour(
@@ -99,7 +108,7 @@ def plot_contour(
             Target's name to display on the color bar.
 
     Returns:
-        A :class:`plotly.graph_objs.Figure` object.
+        A :class:`plotly.graph_objects.Figure` object.
 
     .. note::
         The colormap is reversed when the ``target`` argument isn't :obj:`None` or ``direction``
@@ -193,15 +202,22 @@ def _get_contour_subplot(
     info: _SubContourInfo,
     reverse_scale: bool,
     target_name: str = "Objective Value",
-) -> tuple["Contour", "Scatter"]:
+) -> tuple["Contour", "Scatter", "Scatter"]:
     x_indices = info.xaxis.indices
     y_indices = info.yaxis.indices
-    x_values = []
-    y_values = []
-    for x_value, y_value in zip(info.xaxis.values, info.yaxis.values):
+
+    feasible = _PlotValues([], [])
+    infeasible = _PlotValues([], [])
+
+    for x_value, y_value, c in zip(info.xaxis.values, info.yaxis.values, info.constraints):
         if x_value is not None and y_value is not None:
-            x_values.append(x_value)
-            y_values.append(y_value)
+            if c:
+                feasible.x.append(x_value)
+                feasible.y.append(y_value)
+            else:
+                infeasible.x.append(x_value)
+                infeasible.y.append(y_value)
+
     z_values = [
         [float("nan") for _ in range(len(info.xaxis.indices))]
         for _ in range(len(info.yaxis.indices))
@@ -210,7 +226,7 @@ def _get_contour_subplot(
         z_values[y_i][x_i] = z_value
 
     if len(x_indices) < 2 or len(y_indices) < 2:
-        return go.Contour(), go.Scatter()
+        return go.Contour(), go.Scatter(), go.Scatter()
 
     contour = go.Contour(
         x=x_indices,
@@ -225,15 +241,28 @@ def _get_contour_subplot(
         reversescale=reverse_scale,
     )
 
-    scatter = go.Scatter(
-        x=x_values,
-        y=y_values,
-        marker={"line": {"width": 2.0, "color": "Grey"}, "color": "black"},
-        mode="markers",
-        showlegend=False,
+    return (
+        contour,
+        _create_scatter(feasible.x, feasible.y, is_feasible=True),
+        _create_scatter(infeasible.x, infeasible.y, is_feasible=False),
     )
 
-    return contour, scatter
+
+def _create_scatter(x: list[Any], y: list[Any], is_feasible: bool) -> Scatter:
+    edge_color = "Gray"
+    marker_color = "black" if is_feasible else "#cccccc"
+    name = "Feasible Trial" if is_feasible else "Infeasible Trial"
+    return go.Scatter(
+        x=x,
+        y=y,
+        marker={
+            "line": {"width": 2.0, "color": edge_color},
+            "color": marker_color,
+        },
+        mode="markers",
+        name=name,
+        showlegend=False,
+    )
 
 
 def _get_contour_info(
@@ -267,14 +296,14 @@ def _get_contour_info(
     if len(sorted_params) == 2:
         x_param = sorted_params[0]
         y_param = sorted_params[1]
-        sub_plot_info = _get_contour_subplot_info(trials, x_param, y_param, target)
+        sub_plot_info = _get_contour_subplot_info(study, trials, x_param, y_param, target)
         sub_plot_infos = [[sub_plot_info]]
     else:
         sub_plot_infos = []
         for i, y_param in enumerate(sorted_params):
             sub_plot_infos.append([])
             for x_param in sorted_params:
-                sub_plot_info = _get_contour_subplot_info(trials, x_param, y_param, target)
+                sub_plot_info = _get_contour_subplot_info(study, trials, x_param, y_param, target)
                 sub_plot_infos[i].append(sub_plot_info)
 
     reverse_scale = _is_reverse_scale(study, target)
@@ -288,6 +317,7 @@ def _get_contour_info(
 
 
 def _get_contour_subplot_info(
+    study: Study,
     trials: list[FrozenTrial],
     x_param: str,
     y_param: str,
@@ -306,7 +336,7 @@ def _get_contour_subplot_info(
         _logger.warning("Param {} unique value length is less than 2.".format(y_param))
         return _SubContourInfo(xaxis=xaxis, yaxis=yaxis, z_values={})
 
-    z_values = {}
+    z_values: dict[tuple[int, int], float] = {}
     for i, trial in enumerate(trials):
         if x_param not in trial.params or y_param not in trial.params:
             continue
@@ -323,9 +353,29 @@ def _get_contour_subplot_info(
             value = target(trial)
         assert value is not None
 
-        z_values[(x_i, y_i)] = value
+        existing = z_values.get((x_i, y_i))
+        if existing is None or target is not None:
+            # When target function is present, we can't be sure what the z-value
+            # represents and therefore we don't know how to select the best one.
+            z_values[(x_i, y_i)] = value
+        else:
+            z_values[(x_i, y_i)] = (
+                min(existing, value)
+                if study.direction is StudyDirection.MINIMIZE
+                else max(existing, value)
+            )
 
-    return _SubContourInfo(xaxis=xaxis, yaxis=yaxis, z_values=z_values)
+    return _SubContourInfo(
+        xaxis=xaxis,
+        yaxis=yaxis,
+        z_values=z_values,
+        constraints=[_satisfy_constraints(t) for t in trials],
+    )
+
+
+def _satisfy_constraints(trial: FrozenTrial) -> bool:
+    constraints = trial.system_attrs.get(_CONSTRAINTS_KEY)
+    return constraints is None or all([x <= 0.0 for x in constraints])
 
 
 def _get_axis_info(trials: list[FrozenTrial], param_name: str) -> _AxisInfo:

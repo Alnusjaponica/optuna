@@ -2,19 +2,30 @@ from __future__ import annotations
 
 import datetime
 from io import BytesIO
+import time
+from typing import Any
 
 import _pytest.capture
 import pytest
 
 import optuna
+from optuna.samplers._base import _CONSTRAINTS_KEY
 from optuna.study.study import Study
 from optuna.trial import TrialState
-from optuna.visualization._plotly_imports import go
+from optuna.visualization._plotly_imports import _imports as plotly_imports
+
+
+if plotly_imports.is_successful():
+    from optuna.visualization._plotly_imports import go
+
 from optuna.visualization._timeline import _get_timeline_info
 from optuna.visualization._timeline import plot_timeline
 
 
-def _create_study(trial_states_list: list[TrialState]) -> Study:
+def _create_study(
+    trial_states_list: list[TrialState],
+    trial_sys_attrs: dict[str, Any] | None = None,
+) -> Study:
     study = optuna.create_study()
     fmax = float(len(trial_states_list))
     for i, s in enumerate(trial_states_list):
@@ -22,8 +33,9 @@ def _create_study(trial_states_list: list[TrialState]) -> Study:
             optuna.trial.create_trial(
                 params={"x": float(i)},
                 distributions={"x": optuna.distributions.FloatDistribution(-1.0, fmax)},
-                value=0.0,
+                value=0.0 if s == TrialState.COMPLETE else None,
                 state=s,
+                system_attrs=trial_sys_attrs,
             )
         )
     return study
@@ -58,9 +70,17 @@ def test_get_timeline_info_empty() -> None:
     assert len(info.bars) == 0
 
 
-def test_get_timeline_info() -> None:
+@pytest.mark.parametrize(
+    "trial_sys_attrs, infeasible",
+    [
+        (None, False),
+        ({_CONSTRAINTS_KEY: [1.0]}, True),
+        ({_CONSTRAINTS_KEY: [-1.0]}, False),
+    ],
+)
+def test_get_timeline_info(trial_sys_attrs: dict[str, Any] | None, infeasible: bool) -> None:
     states = [TrialState.COMPLETE, TrialState.RUNNING, TrialState.WAITING]
-    study = _create_study(states)
+    study = _create_study(states, trial_sys_attrs)
     info = _get_timeline_info(study)
     assert len(info.bars) == len(study.get_trials())
     for bar, trial in zip(info.bars, study.get_trials()):
@@ -70,6 +90,7 @@ def test_get_timeline_info() -> None:
         assert isinstance(bar.start, datetime.datetime)
         assert isinstance(bar.complete, datetime.datetime)
         assert bar.start <= bar.complete
+        assert bar.infeasible == infeasible
 
 
 def test_get_timeline_info_negative_elapsed_time(capsys: _pytest.capture.CaptureFixture) -> None:
@@ -98,12 +119,39 @@ def test_get_timeline_info_negative_elapsed_time(capsys: _pytest.capture.Capture
     "trial_states_list",
     [
         [],
-        [TrialState.COMPLETE, TrialState.PRUNED, TrialState.FAIL],
-        [TrialState.FAIL, TrialState.PRUNED, TrialState.COMPLETE],
+        [TrialState.COMPLETE, TrialState.PRUNED, TrialState.FAIL, TrialState.RUNNING],
+        [TrialState.RUNNING, TrialState.FAIL, TrialState.PRUNED, TrialState.COMPLETE],
     ],
 )
 def test_get_timeline_plot(trial_states_list: list[TrialState]) -> None:
     study = _create_study(trial_states_list)
     fig = plot_timeline(study)
     assert type(fig) is go.Figure
+    fig.write_image(BytesIO())
+
+
+@pytest.mark.parametrize("waiting_time", [0.0, 1.5])
+def test_get_timeline_plot_with_killed_running_trials(waiting_time: float) -> None:
+    def _objective_with_sleep(trial: optuna.Trial) -> float:
+        time.sleep(0.1)
+        trial.suggest_float("x", -1, 1)
+        return 1.0
+
+    study = optuna.create_study()
+    trial = optuna.trial.create_trial(
+        params={"x": 0.0},
+        distributions={"x": optuna.distributions.FloatDistribution(-1.0, 1.0)},
+        value=None,
+        state=TrialState.RUNNING,
+    )
+    study.add_trial(trial)
+    study.optimize(_objective_with_sleep, n_trials=2)
+
+    time.sleep(waiting_time)
+    fig = plot_timeline(study)
+    bar_colors = [d["marker"]["color"] for d in fig["data"]]
+    assert "green" in bar_colors, "Running trial, i.e. green color, must be included."
+    bar_length_in_milliseconds = fig["data"][1]["x"][0]
+    # If the waiting time is too long, stop the timeline plots for running trials.
+    assert waiting_time < 1.0 or bar_length_in_milliseconds < waiting_time * 1000
     fig.write_image(BytesIO())

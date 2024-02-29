@@ -19,6 +19,7 @@ from optuna.trial import create_trial
 from optuna.trial import Trial
 from optuna.visualization import plot_param_importances as plotly_plot_param_importances
 from optuna.visualization._param_importances import _get_importances_info
+from optuna.visualization._param_importances import _get_importances_infos
 from optuna.visualization._param_importances import _ImportancesInfo
 from optuna.visualization._plotly_imports import go
 from optuna.visualization.matplotlib import plot_param_importances as plt_plot_param_importances
@@ -37,6 +38,16 @@ def _create_study_with_failed_trial() -> Study:
     return study
 
 
+def _create_multiobjective_study_with_failed_trial() -> Study:
+    study = create_study(directions=["minimize", "minimize"])
+    study.optimize(fail_objective, n_trials=1, catch=(ValueError,))
+    return study
+
+
+def _create_multiobjective_study() -> Study:
+    return prepare_study_with_trials(n_objectives=2)
+
+
 def test_target_is_none_and_study_is_multi_obj() -> None:
     study = create_study(directions=["minimize", "minimize"])
     with pytest.raises(ValueError):
@@ -53,9 +64,23 @@ def test_plot_param_importances_customized_target_name(
     study = prepare_study_with_trials()
     figure = plot_param_importances(study, params=params, target_name="Target Name")
     if isinstance(figure, go.Figure):
-        assert figure.layout.xaxis.title.text == "Importance for Target Name"
+        assert figure.layout.xaxis.title.text == "Hyperparameter Importance"
     elif isinstance(figure, Axes):
-        assert figure.figure.axes[0].get_xlabel() == "Importance for Target Name"
+        assert figure.figure.axes[0].get_xlabel() == "Hyperparameter Importance"
+
+
+@parametrize_plot_param_importances
+def test_plot_param_importances_multiobjective_all_objectives_displayed(
+    plot_param_importances: Callable[..., Any]
+) -> None:
+    n_objectives = 2
+    params = ["param_a"]
+    study = prepare_study_with_trials(n_objectives)
+    figure = plot_param_importances(study, params=params)
+    if isinstance(figure, go.Figure):
+        assert len(figure.data) == n_objectives
+    elif isinstance(figure, Axes):
+        assert len(figure.patches) == n_objectives * len(params)
 
 
 @parametrize_plot_param_importances
@@ -63,7 +88,9 @@ def test_plot_param_importances_customized_target_name(
     "specific_create_study",
     [
         create_study,
+        _create_multiobjective_study,
         _create_study_with_failed_trial,
+        _create_multiobjective_study_with_failed_trial,
         prepare_study_with_trials,
     ],
 )
@@ -111,6 +138,42 @@ def test_get_param_importances_info_empty(
     assert info == _ImportancesInfo(
         importance_values=[], param_names=[], importance_labels=[], target_name="Objective Value"
     )
+
+
+@pytest.mark.parametrize(
+    "specific_create_study,objective_names",
+    [(create_study, ["Foo"]), (_create_multiobjective_study, ["Foo", "Bar"])],
+)
+def test_get_param_importances_infos_custom_objective_names(
+    specific_create_study: Callable[[], Study], objective_names: list[str]
+) -> None:
+    study = specific_create_study()
+    study.set_metric_names(objective_names)
+
+    infos = _get_importances_infos(
+        study, evaluator=None, params=["param_a"], target=None, target_name="Objective Value"
+    )
+    assert len(infos) == len(study.directions)
+    assert all(info.target_name == expected for info, expected in zip(infos, objective_names))
+
+
+@pytest.mark.parametrize(
+    "specific_create_study,objective_names",
+    [
+        (create_study, ["Objective Value"]),
+        (_create_multiobjective_study, ["Objective Value 0", "Objective Value 1"]),
+    ],
+)
+def test_get_param_importances_infos_default_objective_names(
+    specific_create_study: Callable[[], Study], objective_names: list[str]
+) -> None:
+    study = specific_create_study()
+
+    infos = _get_importances_infos(
+        study, evaluator=None, params=["param_a"], target=None, target_name="Objective Value"
+    )
+    assert len(infos) == len(study.directions)
+    assert all(info.target_name == expected for info, expected in zip(infos, objective_names))
 
 
 def test_switch_label_when_param_insignificant() -> None:

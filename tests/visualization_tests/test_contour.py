@@ -102,6 +102,37 @@ def _create_study_mixture_category_types() -> Study:
     return study
 
 
+def _create_study_with_overlapping_params(direction: str) -> Study:
+    study = create_study(direction=direction)
+    distributions = {
+        "param_a": FloatDistribution(1.0, 2.0),
+        "param_b": CategoricalDistribution(["100", "101"]),
+        "param_c": CategoricalDistribution(["foo", "bar"]),
+    }
+    study.add_trial(
+        create_trial(
+            value=0.0,
+            params={"param_a": 1.0, "param_b": "101", "param_c": "foo"},
+            distributions=distributions,
+        )
+    )
+    study.add_trial(
+        create_trial(
+            value=1.0,
+            params={"param_a": 1.0, "param_b": "101", "param_c": "bar"},
+            distributions=distributions,
+        )
+    )
+    study.add_trial(
+        create_trial(
+            value=1.0,
+            params={"param_a": 2.0, "param_b": "100", "param_c": "foo"},
+            distributions=distributions,
+        )
+    )
+    return study
+
+
 @parametrize_plot_contour
 def test_plot_contour_customized_target_name(plot_contour: Callable[..., Any]) -> None:
     params = ["param_a", "param_b"]
@@ -225,6 +256,7 @@ def test_get_contour_info_2_params() -> None:
                         values=[2.0, 0.0, 1.0],
                     ),
                     z_values={(1, 3): 0.0, (2, 2): 1.0},
+                    constraints=[True, True, True],
                 )
             ]
         ],
@@ -246,7 +278,7 @@ def test_get_contour_info_more_than_2_params(params: list[str] | None) -> None:
     n_params = len(params) if params is not None else 4
     info = _get_contour_info(study, params=params)
     assert len(info.sorted_params) == n_params
-    assert np.shape(np.asarray(info.sub_plot_infos, dtype=object)) == (n_params, n_params, 3)
+    assert np.shape(np.asarray(info.sub_plot_infos, dtype=object)) == (n_params, n_params, 4)
 
 
 @pytest.mark.parametrize(
@@ -263,7 +295,7 @@ def test_get_contour_info_customized_target(params: list[str]) -> None:
     )
     n_params = len(params)
     assert len(info.sorted_params) == n_params
-    plot_shape = (1, 1, 3) if n_params == 2 else (n_params, n_params, 3)
+    plot_shape = (1, 1, 4) if n_params == 2 else (n_params, n_params, 4)
     assert np.shape(np.asarray(info.sub_plot_infos, dtype=object)) == plot_shape
 
 
@@ -317,6 +349,7 @@ def test_generate_contour_plot_for_few_observations(params: list[str]) -> None:
                         values=[2.0, 0.0],
                     ),
                     z_values={},
+                    constraints=[],
                 )
             ]
         ],
@@ -351,6 +384,7 @@ def test_get_contour_info_log_scale_and_str_category_2_params() -> None:
                         values=["101", "100"],
                     ),
                     z_values={(1, 1): 0.0, (2, 0): 1.0},
+                    constraints=[True, True],
                 )
             ]
         ],
@@ -365,7 +399,7 @@ def test_get_contour_info_log_scale_and_str_category_more_than_2_params() -> Non
     info = _get_contour_info(study)
     params = ["param_a", "param_b", "param_c"]
     assert info.sorted_params == params
-    assert np.shape(np.asarray(info.sub_plot_infos, dtype=object)) == (3, 3, 3)
+    assert np.shape(np.asarray(info.sub_plot_infos, dtype=object)) == (3, 3, 4)
     ranges = {
         "param_a": (math.pow(10, -6.05), math.pow(10, -4.95)),
         "param_b": (-0.05, 1.05),
@@ -435,6 +469,7 @@ def test_get_contour_info_mixture_category_types() -> None:
                         values=[101.0, 102.0],
                     ),
                     z_values={(0, 2): 0.5, (1, 1): 0.0},
+                    constraints=[True, True],
                 )
             ]
         ],
@@ -469,6 +504,7 @@ def test_get_contour_info_nonfinite_removed(value: float) -> None:
                         values=[4.0, 2.0],
                     ),
                     z_values={(1, 2): 2.0, (2, 1): 1.0},
+                    constraints=[True, True],
                 )
             ]
         ],
@@ -509,11 +545,47 @@ def test_get_contour_info_nonfinite_multiobjective(objective: int, value: float)
                         values=[4.0, 2.0],
                     ),
                     z_values={(1, 2): 2.0, (2, 1): 1.0},
+                    constraints=[True, True],
                 )
             ]
         ],
         reverse_scale=True,
         target_name="Target Name",
+    )
+
+
+@pytest.mark.parametrize("direction,expected", (("minimize", 0.0), ("maximize", 1.0)))
+def test_get_contour_info_overlapping_params(direction: str, expected: float) -> None:
+    study = _create_study_with_overlapping_params(direction)
+    info = _get_contour_info(study, params=["param_a", "param_b"])
+    assert info == _ContourInfo(
+        sorted_params=["param_a", "param_b"],
+        sub_plot_infos=[
+            [
+                _SubContourInfo(
+                    xaxis=_AxisInfo(
+                        name="param_a",
+                        range=(0.95, 2.05),
+                        is_log=False,
+                        is_cat=False,
+                        indices=[0.95, 1.0, 2.0, 2.05],
+                        values=[1.0, 1.0, 2.0],
+                    ),
+                    yaxis=_AxisInfo(
+                        name="param_b",
+                        range=(-0.05, 1.05),
+                        is_log=False,
+                        is_cat=True,
+                        indices=["100", "101"],
+                        values=["101", "101", "100"],
+                    ),
+                    z_values={(1, 1): expected, (2, 0): 1.0},
+                    constraints=[True, True, True],
+                )
+            ]
+        ],
+        reverse_scale=False if direction == "maximize" else True,
+        target_name="Objective Value",
     )
 
 

@@ -11,6 +11,9 @@ from optuna.distributions import BaseDistribution
 from optuna.distributions import CategoricalChoiceType
 
 
+_SUGGEST_INT_POSITIONAL_ARGS = ["self", "name", "low", "high", "step", "log"]
+
+
 class BaseTrial(abc.ABC):
     """Base class for trials.
 
@@ -45,40 +48,36 @@ class BaseTrial(abc.ABC):
         raise NotImplementedError
 
     @abc.abstractmethod
-    def suggest_int(self, name: str, low: int, high: int, step: int = 1, log: bool = False) -> int:
+    def suggest_int(
+        self, name: str, low: int, high: int, *, step: int = 1, log: bool = False
+    ) -> int:
         raise NotImplementedError
 
     @overload
     @abc.abstractmethod
-    def suggest_categorical(self, name: str, choices: Sequence[None]) -> None:
-        ...
+    def suggest_categorical(self, name: str, choices: Sequence[None]) -> None: ...
 
     @overload
     @abc.abstractmethod
-    def suggest_categorical(self, name: str, choices: Sequence[bool]) -> bool:
-        ...
+    def suggest_categorical(self, name: str, choices: Sequence[bool]) -> bool: ...
 
     @overload
     @abc.abstractmethod
-    def suggest_categorical(self, name: str, choices: Sequence[int]) -> int:
-        ...
+    def suggest_categorical(self, name: str, choices: Sequence[int]) -> int: ...
 
     @overload
     @abc.abstractmethod
-    def suggest_categorical(self, name: str, choices: Sequence[float]) -> float:
-        ...
+    def suggest_categorical(self, name: str, choices: Sequence[float]) -> float: ...
 
     @overload
     @abc.abstractmethod
-    def suggest_categorical(self, name: str, choices: Sequence[str]) -> str:
-        ...
+    def suggest_categorical(self, name: str, choices: Sequence[str]) -> str: ...
 
     @overload
     @abc.abstractmethod
     def suggest_categorical(
         self, name: str, choices: Sequence[CategoricalChoiceType]
-    ) -> CategoricalChoiceType:
-        ...
+    ) -> CategoricalChoiceType: ...
 
     @abc.abstractmethod
     def suggest_categorical(

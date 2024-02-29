@@ -1,6 +1,7 @@
 """Optuna CLI module.
 If you want to add a new command, you also need to update the constant `_COMMANDS`
 """
+
 from argparse import ArgumentParser
 from argparse import Namespace
 import datetime
@@ -21,12 +22,17 @@ from typing import Type
 from typing import Union
 import warnings
 
+import sqlalchemy.exc
 import yaml
 
 import optuna
 from optuna._imports import _LazyImport
 from optuna.exceptions import CLIUsageError
 from optuna.exceptions import ExperimentalWarning
+from optuna.storages import BaseStorage
+from optuna.storages import JournalFileStorage
+from optuna.storages import JournalRedisStorage
+from optuna.storages import JournalStorage
 from optuna.storages import RDBStorage
 from optuna.trial import TrialState
 
@@ -49,6 +55,27 @@ def _check_storage_url(storage_url: Optional[str]) -> str:
         )
         return env_storage
     raise CLIUsageError("Storage URL is not specified.")
+
+
+def _get_storage(storage_url: Optional[str], storage_class: Optional[str]) -> BaseStorage:
+    storage_url = _check_storage_url(storage_url)
+    if storage_class:
+        if storage_class == JournalRedisStorage.__name__:
+            return JournalStorage(JournalRedisStorage(storage_url))
+        if storage_class == JournalFileStorage.__name__:
+            return JournalStorage(JournalFileStorage(storage_url))
+        if storage_class == RDBStorage.__name__:
+            return RDBStorage(storage_url)
+        raise CLIUsageError("Unsupported storage class")
+
+    if storage_url.startswith("redis"):
+        return JournalStorage(JournalRedisStorage(storage_url))
+    if os.path.isfile(storage_url):
+        return JournalStorage(JournalFileStorage(storage_url))
+    try:
+        return RDBStorage(storage_url)
+    except sqlalchemy.exc.ArgumentError:
+        raise CLIUsageError("Failed to guess storage class from storage_url")
 
 
 def _format_value(value: Any) -> Any:
@@ -160,6 +187,16 @@ class CellValue:
             return f"{value:<{width}}"
 
 
+def _dump_value(records: List[Dict[str, Any]], header: List[str]) -> str:
+    values = []
+    for record in records:
+        row = []
+        for column_name in header:
+            row.append(str(record.get(column_name, "")))
+        values.append(" ".join(row))
+    return "\n".join(values)
+
+
 def _dump_table(records: List[Dict[str, Any]], header: List[str]) -> str:
     rows = []
     for record in records:
@@ -207,7 +244,12 @@ def _format_output(
     else:
         values, header = _convert_to_dict([records], columns, flatten)
 
-    if output_format == "table":
+    if output_format == "value":
+        if isinstance(records, list):
+            return _dump_value(values, header).strip()
+        else:
+            return str(values[0]).strip()
+    elif output_format == "table":
         return _dump_table(values, header).strip()
     elif output_format == "json":
         if isinstance(records, list):
@@ -293,8 +335,7 @@ class _CreateStudy(_BaseCommand):
         )
 
     def take_action(self, parsed_args: Namespace) -> int:
-        storage_url = _check_storage_url(parsed_args.storage)
-        storage = optuna.storages.get_storage(storage_url)
+        storage = _get_storage(parsed_args.storage, parsed_args.storage_class)
         study_name = optuna.create_study(
             storage=storage,
             study_name=parsed_args.study_name,
@@ -313,8 +354,7 @@ class _DeleteStudy(_BaseCommand):
         parser.add_argument("--study-name", default=None, help="The name of the study to delete.")
 
     def take_action(self, parsed_args: Namespace) -> int:
-        storage_url = _check_storage_url(parsed_args.storage)
-        storage = optuna.storages.get_storage(storage_url)
+        storage = _get_storage(parsed_args.storage, parsed_args.storage_class)
         study_id = storage.get_study_id_from_name(parsed_args.study_name)
         storage.delete_study(study_id)
         return 0
@@ -336,7 +376,7 @@ class _StudySetUserAttribute(_BaseCommand):
         parser.add_argument("--value", required=True, help="Value to be set.")
 
     def take_action(self, parsed_args: Namespace) -> int:
-        storage_url = _check_storage_url(parsed_args.storage)
+        storage = _get_storage(parsed_args.storage, parsed_args.storage_class)
 
         if parsed_args.study and parsed_args.study_name:
             raise ValueError(
@@ -346,15 +386,39 @@ class _StudySetUserAttribute(_BaseCommand):
         elif parsed_args.study:
             message = "The use of `--study` is deprecated. Please use `--study-name` instead."
             warnings.warn(message, FutureWarning)
-            study = optuna.load_study(storage=storage_url, study_name=parsed_args.study)
+            study = optuna.load_study(storage=storage, study_name=parsed_args.study)
         elif parsed_args.study_name:
-            study = optuna.load_study(storage=storage_url, study_name=parsed_args.study_name)
+            study = optuna.load_study(storage=storage, study_name=parsed_args.study_name)
         else:
             raise ValueError("Missing study name. Please use `--study-name`.")
 
         study.set_user_attr(parsed_args.key, parsed_args.value)
 
         self.logger.info("Attribute successfully written.")
+        return 0
+
+
+class _StudyNames(_BaseCommand):
+    """Get all study names stored in a specified storage"""
+
+    def add_arguments(self, parser: ArgumentParser) -> None:
+        parser.add_argument(
+            "-f",
+            "--format",
+            type=str,
+            choices=("value", "json", "table", "yaml"),
+            default="value",
+            help="Output format.",
+        )
+
+    def take_action(self, parsed_args: Namespace) -> int:
+        storage = _get_storage(parsed_args.storage, parsed_args.storage_class)
+        all_study_names = optuna.get_all_study_names(storage)
+        records = []
+        record_key = ("name", "")
+        for study_name in all_study_names:
+            records.append({record_key: study_name})
+        print(_format_output(records, [record_key], parsed_args.format, flatten=False))
         return 0
 
 
@@ -385,8 +449,8 @@ class _Studies(_BaseCommand):
         )
 
     def take_action(self, parsed_args: Namespace) -> int:
-        storage_url = _check_storage_url(parsed_args.storage)
-        summaries = optuna.get_all_study_summaries(storage_url, include_best_trial=False)
+        storage = _get_storage(parsed_args.storage, parsed_args.storage_class)
+        summaries = optuna.get_all_study_summaries(storage, include_best_trial=False)
 
         records = []
         for s in summaries:
@@ -444,8 +508,8 @@ class _Trials(_BaseCommand):
             ExperimentalWarning,
         )
 
-        storage_url = _check_storage_url(parsed_args.storage)
-        study = optuna.load_study(storage=storage_url, study_name=parsed_args.study_name)
+        storage = _get_storage(parsed_args.storage, parsed_args.storage_class)
+        study = optuna.load_study(storage=storage, study_name=parsed_args.study_name)
         attrs = (
             "number",
             "value" if not study._is_multi_objective() else "values",
@@ -494,8 +558,8 @@ class _BestTrial(_BaseCommand):
             ExperimentalWarning,
         )
 
-        storage_url = _check_storage_url(parsed_args.storage)
-        study = optuna.load_study(storage=storage_url, study_name=parsed_args.study_name)
+        storage = _get_storage(parsed_args.storage, parsed_args.storage_class)
+        study = optuna.load_study(storage=storage, study_name=parsed_args.study_name)
         attrs = (
             "number",
             "value" if not study._is_multi_objective() else "values",
@@ -548,8 +612,8 @@ class _BestTrials(_BaseCommand):
             ExperimentalWarning,
         )
 
-        storage_url = _check_storage_url(parsed_args.storage)
-        study = optuna.load_study(storage=storage_url, study_name=parsed_args.study_name)
+        storage = _get_storage(parsed_args.storage, parsed_args.storage_class)
+        study = optuna.load_study(storage=storage, study_name=parsed_args.study_name)
         best_trials = [trial.number for trial in study.best_trials]
         attrs = (
             "number",
@@ -613,7 +677,7 @@ class _StudyOptimize(_BaseCommand):
         )
         warnings.warn(message, FutureWarning)
 
-        storage_url = _check_storage_url(parsed_args.storage)
+        storage = _get_storage(parsed_args.storage, parsed_args.storage_class)
 
         if parsed_args.study and parsed_args.study_name:
             raise ValueError(
@@ -623,9 +687,9 @@ class _StudyOptimize(_BaseCommand):
         elif parsed_args.study:
             message = "The use of `--study` is deprecated. Please use `--study-name` instead."
             warnings.warn(message, FutureWarning)
-            study = optuna.load_study(storage=storage_url, study_name=parsed_args.study)
+            study = optuna.load_study(storage=storage, study_name=parsed_args.study)
         elif parsed_args.study_name:
-            study = optuna.load_study(storage=storage_url, study_name=parsed_args.study_name)
+            study = optuna.load_study(storage=storage, study_name=parsed_args.study_name)
         else:
             raise ValueError("Missing study name. Please use `--study-name`.")
 
@@ -656,14 +720,17 @@ class _StudyOptimize(_BaseCommand):
 
 
 class _StorageUpgrade(_BaseCommand):
-    """Upgrade the schema of a storage."""
+    """Upgrade the schema of an RDB storage."""
 
     def take_action(self, parsed_args: Namespace) -> int:
         storage_url = _check_storage_url(parsed_args.storage)
-        if storage_url.startswith("redis"):
-            self.logger.info("This storage does not support upgrade yet.")
+        try:
+            storage = RDBStorage(
+                storage_url, skip_compatibility_check=True, skip_table_creation=True
+            )
+        except sqlalchemy.exc.ArgumentError:
+            self.logger.error("Invalid RDBStorage URL.")
             return 1
-        storage = RDBStorage(storage_url, skip_compatibility_check=True, skip_table_creation=True)
         current_version = storage.get_current_version()
         head_version = storage.get_head_version()
         known_versions = storage.get_all_versions()
@@ -741,10 +808,10 @@ class _Ask(_BaseCommand):
             ExperimentalWarning,
         )
 
-        storage_url = _check_storage_url(parsed_args.storage)
+        storage = _get_storage(parsed_args.storage, parsed_args.storage_class)
 
         create_study_kwargs = {
-            "storage": storage_url,
+            "storage": storage,
             "study_name": parsed_args.study_name,
             "direction": parsed_args.direction,
             "directions": parsed_args.directions,
@@ -859,10 +926,10 @@ class _Tell(_BaseCommand):
             ExperimentalWarning,
         )
 
-        storage_url = _check_storage_url(parsed_args.storage)
+        storage = _get_storage(parsed_args.storage, parsed_args.storage_class)
 
         study = optuna.load_study(
-            storage=storage_url,
+            storage=storage,
             study_name=parsed_args.study_name,
         )
 
@@ -890,6 +957,7 @@ _COMMANDS: Dict[str, Type[_BaseCommand]] = {
     "create-study": _CreateStudy,
     "delete-study": _DeleteStudy,
     "study set-user-attr": _StudySetUserAttribute,
+    "study-names": _StudyNames,
     "studies": _Studies,
     "trials": _Trials,
     "best-trial": _BestTrial,
@@ -909,6 +977,16 @@ def _add_common_arguments(parser: ArgumentParser) -> ArgumentParser:
             "DB URL. (e.g. sqlite:///example.db) "
             "Also can be specified via OPTUNA_STORAGE environment variable."
         ),
+    )
+    parser.add_argument(
+        "--storage-class",
+        help="Storage class hint (e.g. JournalFileStorage)",
+        default=None,
+        choices=[
+            RDBStorage.__name__,
+            JournalFileStorage.__name__,
+            JournalRedisStorage.__name__,
+        ],
     )
     verbose_group = parser.add_mutually_exclusive_group()
     verbose_group.add_argument(

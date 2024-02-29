@@ -12,6 +12,8 @@ from optuna.terminator import BaseErrorEvaluator
 from optuna.terminator import BaseImprovementEvaluator
 from optuna.terminator import CrossValidationErrorEvaluator
 from optuna.terminator import RegretBoundEvaluator
+from optuna.terminator.erroreval import StaticErrorEvaluator
+from optuna.terminator.improvement.evaluator import BestValueStagnationEvaluator
 from optuna.terminator.improvement.evaluator import DEFAULT_MIN_N_TRIALS
 from optuna.visualization._plotly_imports import _imports
 
@@ -43,10 +45,10 @@ def plot_terminator_improvement(
     """Plot the potentials for future objective improvement.
 
     This function visualizes the objective improvement potentials, evaluated
-    with `improvement_evaluator`.
+    with ``improvement_evaluator``.
     It helps to determine whether we should continue the optimization or not.
     You can also plot the error evaluated with
-    `error_evaluator` if the `plot_error` argument is set to :obj:`True`.
+    ``error_evaluator`` if the ``plot_error`` argument is set to :obj:`True`.
     Note that this function may take some time to compute
     the improvement potentials.
 
@@ -94,7 +96,7 @@ def plot_terminator_improvement(
             for their improvement.
         plot_error:
             A flag to show the error. If it is set to :obj:`True`, errors
-            evaluated by `error_evaluator` are also plotted as line graph.
+            evaluated by ``error_evaluator`` are also plotted as line graph.
             Defaults to :obj:`False`.
         improvement_evaluator:
             An object that evaluates the improvement of the objective function.
@@ -108,7 +110,7 @@ def plot_terminator_improvement(
             shown in a lighter color. Defaults to ``20``.
 
     Returns:
-        A :class:`plotly.graph_objs.Figure` object.
+        A :class:`plotly.graph_objects.Figure` object.
     """
     _imports.check()
 
@@ -128,7 +130,10 @@ def _get_improvement_info(
     if improvement_evaluator is None:
         improvement_evaluator = RegretBoundEvaluator()
     if error_evaluator is None:
-        error_evaluator = CrossValidationErrorEvaluator()
+        if isinstance(improvement_evaluator, BestValueStagnationEvaluator):
+            error_evaluator = StaticErrorEvaluator(constant=0)
+        else:
+            error_evaluator = CrossValidationErrorEvaluator()
 
     trial_numbers = []
     completed_trials = []
