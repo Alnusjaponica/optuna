@@ -980,23 +980,6 @@ def _add_common_arguments(parser: ArgumentParser) -> ArgumentParser:
     options_for_subcommands = parser.add_argument_group(
         "options in common", "Options shared among sub-commands"
     )
-    verbose_group = options_for_subcommands.add_mutually_exclusive_group()
-    verbose_group.add_argument(
-        "-v",
-        "--verbose",
-        action="count",
-        dest="verbose_level",
-        default=1,
-        help="Increase verbosity of output. Can be repeated.",
-    )
-    verbose_group.add_argument(
-        "-q",
-        "--quiet",
-        action="store_const",
-        dest="verbose_level",
-        const=0,
-        help="Suppress output except warnings and errors.",
-    )
     options_for_subcommands.add_argument(
         "--storage",
         default=None,
@@ -1027,6 +1010,27 @@ def _add_common_arguments(parser: ArgumentParser) -> ArgumentParser:
         action="store_true",
         help="Show tracebacks on errors.",
     )
+
+    verbose_group = parser.add_mutually_exclusive_group()
+    verbose_group.add_argument(
+        "-v",
+        "--verbose",
+        action="count",
+        dest="verbose_level",
+        default=1,
+        help="Increase verbosity of output. Can be repeated.",
+    )
+    verbose_group.add_argument(
+        "-q",
+        "--quiet",
+        action="store_const",
+        dest="verbose_level",
+        const=0,
+        help="Suppress output except warnings and errors.",
+    )
+    # Manually set title to for documenting purpose.
+    verbose_group.title = options_for_subcommands.title
+
     return parser
 
 
