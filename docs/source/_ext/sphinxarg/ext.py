@@ -12,6 +12,7 @@ from docutils.statemachine import StringList
 from docutils.utils import new_document
 import sphinx
 from sphinxarg.parser import parse_parser
+from optuna.cli import _get_parser
 
 from . import __version__
 
@@ -179,16 +180,7 @@ def ensure_unique_ids(items: list[nodes.Node]) -> None:
 class ArgParseDirective(Directive):
     has_content = True
     option_spec = dict(
-        module=unchanged,
-        func=unchanged,
-        prog=unchanged,
-        deprecated_subcommand=unchanged,
-        # Options to skip parts of the parser.
-        nodefault=flag,
-        nodefaultconst=flag,
-        nosubcommands=unchanged,
-        noepilog=unchanged,
-        nodescription=unchanged,
+        deprecated=unchanged,
     )
 
     def _nested_parse_paragraph(self, text: str) -> nodes.paragraph:
@@ -197,39 +189,17 @@ class ArgParseDirective(Directive):
         return content
 
     def run(self) -> list[nodes.Node]:
-        # Import the function to create a parser to be documented.
-        if "module" in self.options and "func" in self.options:
-            module_name = self.options["module"]
-            parser_generator = self.options["func"]
-        else:
-            raise self.error("No :module: or :func: specified.")
-        try:
-            mod = importlib.import_module(module_name)
-        except ImportError:
-            raise self.error(
-                'Failed to import "{}" from "{}".\n{}'.format(
-                    parser_generator, module_name, sys.exc_info()[1]
-                )
-            )
-
         # Generate the parser.
-        main_parser_generator = getattr(mod, parser_generator)
-        main_parser, _ = main_parser_generator()
-        # Set prog if specified.
-        main_parser.prog = self.options.get("prog") or main_parser.prog
+        main_parser, _ = _get_parser()
         # Set deprecated subcommand if specified.
         self.deprecated_subcommand = self.options.get("deprecated_subcommand")
 
         # Parse the parser.
-        result = parse_parser(
-            main_parser,
-            skip_default_values="nodefault" in self.options,
-            skip_default_const_values="nodefaultconst" in self.options,
-        )
+        result = parse_parser(main_parser)
 
         # Add common contents to the document.
         items = []
-        if "description" in result and "nodescription" not in self.options:
+        if "description" in result:
             items.append(self._nested_parse_paragraph(result["description"]))
         items.append(nodes.literal_block(text=result["usage"]))
         items.extend(
@@ -238,15 +208,14 @@ class ArgParseDirective(Directive):
                 settings=self.state.document.settings,
             )
         )
-        if "nosubcommands" not in self.options:
-            items.extend(
+        items.extend(
                 print_subcommands(
                     result,
                     settings=self.state.document.settings,
                     deprecated_subcommand=self.deprecated_subcommand,
                 )
             )
-        if "epilog" in result and "noepilog" not in self.options:
+        if "epilog" in result:
             items.append(self._nested_parse_paragraph(result["epilog"]))
 
         # Traverse the returned nodes, modifying the title IDs as necessary to avoid repeats
