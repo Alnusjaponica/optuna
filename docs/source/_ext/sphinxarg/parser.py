@@ -53,9 +53,6 @@ def parse_parser(parser: ArgumentParser, data: dict | None = None, **kwargs: Any
             parse_parser(subaction, subdata, **kwargs)
             data.setdefault("children", []).append(subdata)
 
-    skip_defaults = kwargs.get("skip_default_values", False)
-    skip_defaults_const = kwargs.get("skip_default_const_values", False) or False
-
     # argparse stores the different groups as a list in parser._action_groups
     # the first element of the list holds the positional arguments, the
     # second the option arguments not in groups, and subsequent elements
@@ -66,7 +63,6 @@ def parse_parser(parser: ArgumentParser, data: dict | None = None, **kwargs: Any
         for action in action_group._group_actions:
             if isinstance(action, _HelpAction):
                 continue
-
             # Quote default values for string/None types
             default = action.default
             if (
@@ -98,13 +94,13 @@ def parse_parser(parser: ArgumentParser, data: dict | None = None, **kwargs: Any
             if isinstance(action, _StoreConstAction):
                 option = {
                     "name": options_name,
-                    "default": default if not skip_defaults_const else "==SUPPRESS==",
+                    "default": default,
                     "help": help_str,
                 }
             else:
                 option = {
                     "name": options_name,
-                    "default": default if not skip_defaults else "==SUPPRESS==",
+                    "default": default,
                     "help": help_str,
                 }
             if action.choices:
