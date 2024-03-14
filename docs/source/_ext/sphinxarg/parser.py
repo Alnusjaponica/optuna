@@ -1,125 +1,64 @@
-from argparse import _HelpAction
-from argparse import _StoreConstAction
-from argparse import _SubParsersAction
 from argparse import ArgumentParser
-from typing import Any
+
+from optuna.cli import _get_parser
 
 
-def _try_add_parser_attribute(data: dict, parser: ArgumentParser, attribname: str) -> None:
-    """Add an attribute to the data dict if it exists on the parser."""
-    attribval = getattr(parser, attribname, None)
-    if not isinstance(attribval, str):
-        return
-    if len(attribval) > 0:
-        data[attribname] = attribval
-
-
-def _format_usage_without_prefix(parser: ArgumentParser) -> str:
-    """Format the usage string without any prefixes."""
+def _format_usage(parser: ArgumentParser) -> str:
+    """Format the usage without any prefixes"""
     fmt = parser._get_formatter()
     fmt.add_usage(parser.usage, parser._actions, parser._mutually_exclusive_groups, prefix="")
     return fmt.format_help().strip()
 
 
-def parse_parser(parser: ArgumentParser, data: dict | None = None, **kwargs: Any) -> dict:
-    """Parse an ArgumentParser object into a dict."""
-    if data is None:
-        data = {
-            "name": "",
-            "usage": _format_usage_without_prefix(parser),
-            "prog": parser.prog,
-        }
+def parse_arguments(parser, shared_actions: set | None = None):
+    """Collect all optional arguments"""
+    shared_actions = shared_actions or set()
+    ignored_actions = {"==SUPPRESS==", "help"}
 
-    # Add the description and epilog if they exist.
-    _try_add_parser_attribute(data, parser, "description")
-    _try_add_parser_attribute(data, parser, "epilog")
-
-    for action in parser._get_positional_actions():
-        # Collect the help messages for each subcommand.
-        if not isinstance(action, _SubParsersAction):
-            continue
-        helps = {}
-        for item in action._choices_actions:
-            helps[item.dest] = item.help
-
-        # Add the subcommands to the data.
-        for name, subaction in action._name_parser_map.items():
-            subaction.prog = f"{parser.prog} {name}"
-            subdata = {
-                "name": name,
-                "help": helps.get(name, ""),
-                "usage": _format_usage_without_prefix(subaction),
-            }
-            parse_parser(subaction, subdata, **kwargs)
-            data.setdefault("children", []).append(subdata)
-
-    # argparse stores the different groups as a list in parser._action_groups
-    # the first element of the list holds the positional arguments, the
-    # second the option arguments not in groups, and subsequent elements
-    # argument groups with positional and optional parameters
-    action_groups = []
+    action_groups = {}
     for action_group in parser._action_groups:
-        options_list = []
+        actions = {}
         for action in action_group._group_actions:
-            if isinstance(action, _HelpAction):
+            # Skip arguments shared among all subcommands.
+            if action.dest in shared_actions or action.dest in ignored_actions:
                 continue
-            # Quote default values for string/None types
-            default = action.default
-            if (
-                action.default not in ["", None, True, False]
-                and action.type in [None, str]
-                and isinstance(action.default, str)
-            ):
-                default = f'"{default}"'
-
-            # fill in any formatters, like %(default)s
-            format_dict = dict(vars(action), prog=data.get("prog", ""), default=default)
-            format_dict["default"] = default
-            help_str = action.help or ""  # Ensure we don't print None
-            try:
-                help_str = help_str % format_dict
-            except Exception:
-                pass
-
-            # Options have the option_strings set, positional arguments don't
-            option_strings = action.option_strings
-            # Skip lines for subcommands.
-            if option_strings == ["==SUPPRESS=="]:
-                continue
-            if option_strings == []:
-                options_name = [action.metavar if action.metavar else action.dest]
-            else:
-                options_name = option_strings
-
-            if isinstance(action, _StoreConstAction):
-                option = {
-                    "name": options_name,
-                    "default": default,
-                    "help": help_str,
-                }
-            else:
-                option = {
-                    "name": options_name,
-                    "default": default,
-                    "help": help_str,
-                }
-            if action.choices:
-                option["choices"] = action.choices
-            if "==SUPPRESS==" not in option["help"]:
-                options_list.append(option)
-
-        if len(options_list) == 0:
-            continue
-
-        group = {
-            "title": action_group.title,
+            action_data = {
+                "name": action.option_strings,
+                "default": f'"{action.default}"',
+                "help": action.help,
+                "choices": action.choices,
+            }
+            actions[action.dest] = action_data
+        action_groups[action_group.title] = {
             "description": action_group.description,
-            "options": options_list,
-        }
+            "options": actions}
+    return action_groups
 
-        action_groups.append(group)
 
-    if len(action_groups) > 0:
-        data["action_groups"] = action_groups
-
+def parse_parser(parser: ArgumentParser, shared_actions: set[str]) -> dict:
+    """Parse an ArgumentParser object into a dict."""
+    data = {
+        "name": "",
+        "usage": _format_usage(parser),
+        "prog": parser.prog,
+        "description": parser.description,
+        "epilog": parser.epilog,
+        "action_groups": parse_arguments(parser, shared_actions=shared_actions),
+    }
     return data
+
+
+def parse_parsers():
+    main_parser, parent_parser, command_name_to_subparser = _get_parser()
+    # Collect the shared optional arguments among all subcommands.
+    shared_actions_data = parse_arguments(parent_parser)
+    shared_actions = shared_actions_data["options"]["options"].keys()
+
+    main_parser.prog = "optuna"
+    parsed_args = parse_parser(main_parser, shared_actions)
+    parsed_args["children"] = []
+    for command_name, subparser in command_name_to_subparser.items():
+        subparser.prog = f"optuna {command_name}"
+        parsed_args["children"].append(parse_parser(subparser, shared_actions))
+
+    return parsed_args
