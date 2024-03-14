@@ -1058,13 +1058,13 @@ def _add_commands(
     return command_name_to_subparser
 
 
-def _get_parser(description: str = "") -> Tuple[ArgumentParser, Dict[str, ArgumentParser]]:
+def _get_parser() -> Tuple[ArgumentParser, Dict[str, ArgumentParser]]:
     # Use `parent_parser` is necessary to avoid namespace conflict for -h/--help
     # between `main_parser` and `subparser`.
     parent_parser = ArgumentParser(add_help=False)
     parent_parser = _add_common_arguments(parent_parser)
 
-    main_parser = ArgumentParser(description=description, parents=[parent_parser])
+    main_parser = ArgumentParser(parents=[parent_parser])
     main_parser.add_argument(
         "--version", action="version", version="{0} {1}".format("optuna", optuna.__version__)
     )
