@@ -6,7 +6,6 @@ import multiprocessing
 from multiprocessing.managers import DictProxy
 import os
 import pickle
-import sys
 from typing import Any
 from unittest.mock import patch
 import warnings
@@ -33,11 +32,13 @@ from optuna.trial import TrialState
 
 
 def get_gp_sampler(
-    *, n_startup_trials: int = 0, seed: int | None = None
+    *, n_startup_trials: int = 0, deterministic_objective: bool = False, seed: int | None = None
 ) -> optuna.samplers.GPSampler:
-    if sys.version_info >= (3, 12, 0):
-        pytest.skip("PyTorch does not support Python 3.12 yet.")
-    return optuna.samplers.GPSampler(n_startup_trials=n_startup_trials, seed=seed)
+    return optuna.samplers.GPSampler(
+        n_startup_trials=n_startup_trials,
+        seed=seed,
+        deterministic_objective=deterministic_objective,
+    )
 
 
 parametrize_sampler = pytest.mark.parametrize(
@@ -52,6 +53,7 @@ parametrize_sampler = pytest.mark.parametrize(
         optuna.samplers.NSGAIIISampler,
         optuna.samplers.QMCSampler,
         lambda: get_gp_sampler(n_startup_trials=0),
+        lambda: get_gp_sampler(n_startup_trials=0, deterministic_objective=True),
     ],
 )
 parametrize_relative_sampler = pytest.mark.parametrize(
@@ -61,6 +63,7 @@ parametrize_relative_sampler = pytest.mark.parametrize(
         lambda: optuna.samplers.CmaEsSampler(n_startup_trials=0),
         lambda: optuna.samplers.CmaEsSampler(n_startup_trials=0, use_separable_cma=True),
         lambda: get_gp_sampler(n_startup_trials=0),
+        lambda: get_gp_sampler(n_startup_trials=0, deterministic_objective=True),
     ],
 )
 parametrize_multi_objective_sampler = pytest.mark.parametrize(
@@ -73,36 +76,26 @@ parametrize_multi_objective_sampler = pytest.mark.parametrize(
 )
 
 
-sampler_class_with_seed: dict[str, tuple[Callable[[int], BaseSampler], bool]] = {
-    "RandomSampler": (lambda seed: optuna.samplers.RandomSampler(seed=seed), False),
-    "TPESampler": (lambda seed: optuna.samplers.TPESampler(seed=seed), False),
-    "multivariate TPESampler": (
-        lambda seed: optuna.samplers.TPESampler(multivariate=True, seed=seed),
-        False,
+sampler_class_with_seed: dict[str, Callable[[int], BaseSampler]] = {
+    "RandomSampler": lambda seed: optuna.samplers.RandomSampler(seed=seed),
+    "TPESampler": lambda seed: optuna.samplers.TPESampler(seed=seed),
+    "multivariate TPESampler": lambda seed: optuna.samplers.TPESampler(
+        multivariate=True, seed=seed
     ),
-    "CmaEsSampler": (lambda seed: optuna.samplers.CmaEsSampler(seed=seed), False),
-    "separable CmaEsSampler": (
-        lambda seed: optuna.samplers.CmaEsSampler(seed=seed, use_separable_cma=True),
-        False,
+    "CmaEsSampler": lambda seed: optuna.samplers.CmaEsSampler(seed=seed),
+    "separable CmaEsSampler": lambda seed: optuna.samplers.CmaEsSampler(
+        seed=seed, use_separable_cma=True
     ),
-    "NSGAIISampler": (lambda seed: optuna.samplers.NSGAIISampler(seed=seed), False),
-    "NSGAIIISampler": (lambda seed: optuna.samplers.NSGAIIISampler(seed=seed), False),
-    "QMCSampler": (lambda seed: optuna.samplers.QMCSampler(seed=seed), False),
-    "GPSampler": (lambda seed: get_gp_sampler(seed=seed, n_startup_trials=0), False),
+    "NSGAIISampler": lambda seed: optuna.samplers.NSGAIISampler(seed=seed),
+    "NSGAIIISampler": lambda seed: optuna.samplers.NSGAIIISampler(seed=seed),
+    "QMCSampler": lambda seed: optuna.samplers.QMCSampler(seed=seed),
+    "GPSampler": lambda seed: get_gp_sampler(seed=seed, n_startup_trials=0),
 }
 param_sampler_with_seed = []
 param_sampler_name_with_seed = []
-for sampler_name, (sampler_class, integration_flag) in sampler_class_with_seed.items():
-    if integration_flag:
-        param_sampler_with_seed.append(
-            pytest.param(sampler_class, id=sampler_name, marks=pytest.mark.integration)
-        )
-        param_sampler_name_with_seed.append(
-            pytest.param(sampler_name, marks=pytest.mark.integration)
-        )
-    else:
-        param_sampler_with_seed.append(pytest.param(sampler_class, id=sampler_name))
-        param_sampler_name_with_seed.append(pytest.param(sampler_name))
+for sampler_name, sampler_class in sampler_class_with_seed.items():
+    param_sampler_with_seed.append(pytest.param(sampler_class, id=sampler_name))
+    param_sampler_name_with_seed.append(pytest.param(sampler_name))
 parametrize_sampler_with_seed = pytest.mark.parametrize("sampler_class", param_sampler_with_seed)
 parametrize_sampler_name_with_seed = pytest.mark.parametrize(
     "sampler_name", param_sampler_name_with_seed
@@ -998,7 +991,7 @@ def run_optimize(
         return a + b + c + d + e + f + g
 
     hash_dict[k] = hash("nondeterministic hash")
-    sampler = sampler_class_with_seed[sampler_name][0](1)
+    sampler = sampler_class_with_seed[sampler_name](1)
     study = optuna.create_study(sampler=sampler)
     study.optimize(objective, n_trials=15)
     sequence_dict[k] = list(study.trials[-1].params.values())
@@ -1024,10 +1017,6 @@ def unset_seed_in_test(request: SubRequest) -> None:
 @pytest.mark.slow
 @parametrize_sampler_name_with_seed
 def test_reproducible_in_other_process(sampler_name: str, unset_seed_in_test: None) -> None:
-    # TODO(HideakiImamura): Remove the constraint after torch supports python 3.12.
-    if sys.version_info >= (3, 12, 0) and sampler_name == "GPSampler":
-        pytest.skip("PyTorch does not support Python 3.12 yet.")
-
     # This test should be tested without `PYTHONHASHSEED`. However, some tool such as tox
     # set the environmental variable "PYTHONHASHSEED" by default.
     # To do so, this test calls a finalizer: `unset_seed_in_test`.
