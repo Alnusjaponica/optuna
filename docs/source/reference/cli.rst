@@ -15,7 +15,4 @@ For detail, please see the result of
     The :ref:`cli` tutorial provides use-cases with examples.
 
 .. argparse::
-    :module: optuna.cli
-    :prog: optuna
-    :func: _get_parser
-    :deprecated_subcommand: study optimize
+    :deprecated: study optimize
