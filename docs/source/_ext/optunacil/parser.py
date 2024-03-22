@@ -30,8 +30,8 @@ def parse_arguments(parser, shared_actions: set | None = None):
             }
             actions[action.dest] = action_data
         action_groups[action_group.title] = {
-            "description": action_group.description,
-            "options": actions}
+            "options": actions,
+        }
     return action_groups
 
 
@@ -41,8 +41,6 @@ def parse_parser(parser: ArgumentParser, shared_actions: set[str]) -> dict:
         "name": "",
         "usage": _format_usage(parser),
         "prog": parser.prog,
-        "description": parser.description,
-        "epilog": parser.epilog,
         "action_groups": parse_arguments(parser, shared_actions=shared_actions),
     }
     return data
@@ -61,4 +59,5 @@ def parse_parsers():
         subparser.prog = f"optuna {command_name}"
         parsed_args["children"].append(parse_parser(subparser, shared_actions))
 
+    parsed_args["shared_options"] = shared_actions_data["options"]
     return parsed_args
