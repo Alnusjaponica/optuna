@@ -15,7 +15,7 @@ def parse_arguments(parser, shared_actions: set | None = None):
     shared_actions = shared_actions or set()
     ignored_actions = {"==SUPPRESS==", "help"}
 
-    action_groups = {}
+    action_groups = []
     for action_group in parser._action_groups:
         actions = {}
         for action in action_group._group_actions:
@@ -29,9 +29,11 @@ def parse_arguments(parser, shared_actions: set | None = None):
                 "choices": action.choices,
             }
             actions[action.dest] = action_data
-        action_groups[action_group.title] = {
-            "options": actions,
-        }
+        # Currently, there is no customized groups in Optuna CLI ArgumentParser and
+        # action_group.title is always "action_groups". If anyone add customized groups,
+        # this code should be updated.
+        if actions:
+            action_groups.append({"title": action_group.title, "options": actions})
     return action_groups
 
 
@@ -50,7 +52,7 @@ def parse_parsers():
     main_parser, parent_parser, command_name_to_subparser = _get_parser()
     # Collect the shared optional arguments among all subcommands.
     shared_actions_data = parse_arguments(parent_parser)
-    shared_actions = shared_actions_data["options"]["options"].keys()
+    shared_actions = shared_actions_data[0]["options"].keys()
 
     main_parser.prog = "optuna"
     parsed_args = parse_parser(main_parser, shared_actions)
@@ -59,5 +61,5 @@ def parse_parsers():
         subparser.prog = f"optuna {command_name}"
         parsed_args["children"].append(parse_parser(subparser, shared_actions))
 
-    parsed_args["shared_options"] = shared_actions_data["options"]
+    parsed_args["shared_options"] = shared_actions_data[0]["options"]
     return parsed_args
