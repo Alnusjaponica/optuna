@@ -1,12 +1,13 @@
 from typing import Any
 
-import sphinx
 from docutils import nodes
 from docutils.frontend import OptionParser
-from docutils.parsers.rst import Directive, Parser
+from docutils.parsers.rst import Directive
+from docutils.parsers.rst import Parser
 from docutils.parsers.rst.directives import unchanged
 from docutils.statemachine import StringList
 from docutils.utils import new_document
+import sphinx
 
 from optuna.version import __version__
 
