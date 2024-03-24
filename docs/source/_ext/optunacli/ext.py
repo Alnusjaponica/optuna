@@ -22,80 +22,73 @@ def render_list(
     """
     if len(structured_texts) == 0:
         return []
-    all_children = []
+    all_subcommands = []
     for element in structured_texts:
         if isinstance(element, str):
             if settings is None:
                 settings = OptionParser(components=(Parser,)).get_default_values()
             document = new_document(None, settings)
             Parser().parse(element + "\n", document)
-            all_children += document.children
+            all_subcommands += document.children
         elif isinstance(element, nodes.definition):
-            all_children += element
+            all_subcommands += element
 
-    return all_children
+    return all_subcommands
 
 
 def print_action_groups(data: dict[str, Any], settings: Any = None) -> list[nodes.section]:
-    """
-    Process all 'action groups', which are also include 'Options' and 'Required
-    arguments'.
-
-    Return:
-        A list of nodes.section.
-    """
     nodes_list = []
     for action_group in data["action_groups"]:
-        # Every action group is comprised of a section, holding a title, the description, and the option group (members)
+        # Create a new section for each action group, e.g., positional arguments or options.
         section = nodes.section(ids=[action_group["title"].replace(" ", "-").lower()])
         section += nodes.title(action_group["title"], action_group["title"])
 
-        items = []
-        # Iterate over action group members
-        for subcommand, entry in action_group["options"].items():
-            arg = []
-            if entry.get("choices"):
-                arg.append(
-                    f"Possible choices: {', '.join(str(c) for c in entry['choices'])}\n"
+        # Collect all arguments in the action group except for the ones shared among all
+        # subcommands.
+        arguments = []
+        for action in action_group["actions"]:
+            argument = []
+            if action.get("help"):
+                argument.append(action["help"])
+            if action.get("description"):
+                argument.append(action["description"])
+
+            # Add possible choices and default values as a field list.
+            if action.get("choices"):
+                argument.append(
+                    f"Possible choices: {', '.join(str(choice) for choice in action['choices'])}\n"
                 )
-            if entry.get("help"):
-                arg.append(entry["help"])
+            default = action.get("default")
+            if default not in ['"==SUPPRESS=="', "==SUPPRESS==", None]:
+                argument.append(f"Default: {default}")
 
-            default = entry.get("default")
-            if default is not None and default not in [
-                '"==SUPPRESS=="',
-                "==SUPPRESS==",
-            ]:
-                if default == "":
-                    arg.append('Default: ""')
-                else:
-                    arg.append(f"Default: {default}")
-
-            term = ", ".join(entry["name"])
-            items.append(
+            term = ", ".join(action["prog"])
+            arguments.append(
                 nodes.option_list_item(
                     "",
                     nodes.option_group("", nodes.option_string(text=term)),
-                    nodes.description("", *render_list(arg, settings)),
+                    nodes.description("", *render_list(argument, settings)),
                 )
             )
 
-        section += nodes.option_list("", *items)
+        section += nodes.option_list("", *arguments)
         nodes_list.append(section)
     return nodes_list
 
 
-def create_section(child: dict[str, Any], name: str | None = None, settings: Any = None):
-    # Create a new section for each subcommand.
-    name = child["name"]
-    sec = nodes.section(ids=name)
-    sec += nodes.title(name, name)
+def create_section(action: dict[str, Any], title: str | None = None, settings: Any = None):
+    # Create a new section for each action.
+    title = title or action["name"]
+    sections = nodes.section(ids=title)
+    sections += nodes.title(title, title)
+    if action.get("help"):
+        sections += nodes.paragraph(text=action["help"])
 
-    sec += nodes.literal_block(text=child["usage"])
-    for x in print_action_groups(child, settings=settings):
-        sec += x
+    sections += nodes.literal_block(text=action["usage"])
+    for section in print_action_groups(action, settings=settings):
+        sections += section
 
-    return sec
+    return sections
 
 
 class ArgParseDirective(Directive):
@@ -111,7 +104,7 @@ class ArgParseDirective(Directive):
 
     def run(self) -> list[nodes.Node]:
         # Set deprecated subcommand if specified.
-        self.deprecated_subcommand = self.options.get("deprecated_subcommand")
+        self.deprecated = self.options.get("deprecated") or []
 
         parsed_args = parse_parsers()
 
@@ -123,19 +116,12 @@ class ArgParseDirective(Directive):
                 settings=self.state.document.settings,
             )
         )
-        items.extend(
-            create_section(
-                parsed_args["shared_options"],
-                name="Shared Options",
-                settings=self.state.document.settings,
-            )
-        )
-        for child in parsed_args["children"]:
-            if child["name"] in self.deprecated_subcommand:
+        for subcommand in parsed_args["subcommands"]:
+            if subcommand["name"] in self.deprecated:
                 continue
             items.extend(
                 create_section(
-                    child,
+                    subcommand,
                     settings=self.state.document.settings,
                 )
             )

@@ -11,36 +11,37 @@ def _format_usage(parser: ArgumentParser) -> str:
 
 
 def parse_arguments(parser, shared_actions: set | None = None):
-    """Collect all optional arguments"""
+    """Collect all arguments"""
     shared_actions = shared_actions or set()
     ignored_actions = {"==SUPPRESS==", "help"}
 
     action_groups = []
     for action_group in parser._action_groups:
-        actions = {}
+        actions = []
         for action in action_group._group_actions:
             # Skip arguments shared among all subcommands.
             if action.dest in shared_actions or action.dest in ignored_actions:
                 continue
             action_data = {
-                "name": action.option_strings,
+                "name": action.dest,
                 "default": f'"{action.default}"',
                 "help": action.help,
                 "choices": action.choices,
+                "prog": action.option_strings,
             }
-            actions[action.dest] = action_data
-        # Currently, there is no customized groups in Optuna CLI ArgumentParser and
-        # action_group.title is always "action_groups". If anyone add customized groups,
-        # this code should be updated.
+            actions.append(action_data)
+        # The titles are either 'positional arguments', 'options' or 'shared_actions'
+        # until any custom action group is added.
         if actions:
-            action_groups.append({"title": action_group.title, "options": actions})
+            action_groups.append({"title": action_group.title, "actions": actions})
     return action_groups
 
 
 def parse_parser(parser: ArgumentParser, shared_actions: set[str]) -> dict:
     """Parse an ArgumentParser object into a dict."""
     data = {
-        "name": "",
+        "name": parser.prog,
+        "description": parser.description,
         "usage": _format_usage(parser),
         "prog": parser.prog,
         "action_groups": parse_arguments(parser, shared_actions=shared_actions),
@@ -49,17 +50,21 @@ def parse_parser(parser: ArgumentParser, shared_actions: set[str]) -> dict:
 
 
 def parse_parsers():
+    "Collect the shared optional arguments among all subcommands."
     main_parser, parent_parser, command_name_to_subparser = _get_parser()
-    # Collect the shared optional arguments among all subcommands.
-    shared_actions_data = parse_arguments(parent_parser)
-    shared_actions = shared_actions_data[0]["options"].keys()
+
+    # Currently, only unnamed optional arguments are shared among all subcommands.
+    shared_actions = parse_arguments(parent_parser)[0]
+    shared_actions["title"] = "shared options"
+    shared_actions_set = {action["name"] for action in shared_actions["actions"]}
 
     main_parser.prog = "optuna"
-    parsed_args = parse_parser(main_parser, shared_actions)
-    parsed_args["children"] = []
+    parsed_args = parse_parser(main_parser, shared_actions_set)
+    parsed_args["action_groups"].append(shared_actions)
+
+    parsed_args["subcommands"] = []
     for command_name, subparser in command_name_to_subparser.items():
         subparser.prog = f"optuna {command_name}"
-        parsed_args["children"].append(parse_parser(subparser, shared_actions))
+        parsed_args["subcommands"].append(parse_parser(subparser, shared_actions_set))
 
-    parsed_args["shared_options"] = shared_actions_data[0]["options"]
     return parsed_args
