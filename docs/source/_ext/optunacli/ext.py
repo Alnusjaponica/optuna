@@ -52,7 +52,7 @@ def print_action_groups(data: dict[str, Any], settings: Any = None) -> list[node
 
         items = []
         # Iterate over action group members
-        for entry in action_group["options"]:
+        for subcommand, entry in action_group["options"].items():
             arg = []
             if "choices" in entry:
                 arg.append(
