@@ -54,11 +54,11 @@ def print_action_groups(data: dict[str, Any], settings: Any = None) -> list[node
         # Iterate over action group members
         for subcommand, entry in action_group["options"].items():
             arg = []
-            if "choices" in entry:
+            if entry.get("choices"):
                 arg.append(
                     f"Possible choices: {', '.join(str(c) for c in entry['choices'])}\n"
                 )
-            if "help" in entry:
+            if entry.get("help"):
                 arg.append(entry["help"])
 
             default = entry.get("default")
