@@ -1,6 +1,7 @@
 name: Checks(Optioinal)
 
 on:
+  pull_request: {}
   schedule:
     - cron: '0 23 * * SUN-THU'
   workflow_dispatch:
@@ -29,6 +30,13 @@ jobs:
       run: |
         pip install pipdeptree
         pipdeptree
+
+    - name: black
+      run: black . --check --diff
+    - name: flake8
+      run: flake8 .
+    - name: isort
+      run: isort . --check --diff
     - name: mypy
       run: mypy .
     - name: blackdoc
