@@ -1,9 +1,10 @@
 name: Checks (with optional dependencies)
 
 on:
-  schedule:
-    - cron: '0 23 * * SUN-THU'
-  workflow_dispatch:
+  push:
+    branches:
+      - master
+  pull_request: {}
 
 jobs:
   checks:
